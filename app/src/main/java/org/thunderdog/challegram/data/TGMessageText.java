@@ -276,7 +276,10 @@ public class TGMessageText extends TGMessage {
   private boolean setText (TdApi.FormattedText text, boolean parseEntities, boolean forceUpdate, boolean animated) {
     TdApi.FormattedText adStripped = ContentFilter.stripBlockedAds(text);
     if (adStripped != null) {
-      text = adStripped;
+      // the whole text was an ad link: show a placeholder instead of an empty bubble
+      text = adStripped.text.trim().isEmpty() ?
+        new TdApi.FormattedText(Lang.getString(R.string.AdFilteredPlaceholder), new TdApi.TextEntity[0]) :
+        adStripped;
     }
     if (this.text == null || !Td.equalsTo(this.text, text) || forceUpdate) {
       animated = animated && Config.ENABLE_TEXT_ANIMATIONS && needAnimateChanges();

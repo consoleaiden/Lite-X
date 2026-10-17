@@ -479,7 +479,17 @@ public class PageBlockMedia extends PageBlock implements MediaWrapper.OnClickLis
       return true;
     }
     if (!StringUtils.isEmpty(url)) {
-      context.showOptions(Lang.getString(R.string.OpenThisLink, url), new int[] {R.id.btn_openLink, R.id.btn_copyLink, R.id.btn_open}, new String[] {Lang.getString(R.string.Open), Lang.getString(R.string.CopyLink), Lang.getString(R.string.ViewPhoto)}, null, new int[] {R.drawable.baseline_open_in_browser_24, R.drawable.baseline_content_copy_24, R.drawable.baseline_visibility_24}, (optionItemView, id) -> {
+      boolean canBlockAd = org.thunderdog.challegram.unsorted.ContentFilter.blockAds();
+      int[] optionIds = canBlockAd ?
+        new int[] {R.id.btn_openLink, R.id.btn_copyLink, R.id.btn_open, R.id.btn_blockAd} :
+        new int[] {R.id.btn_openLink, R.id.btn_copyLink, R.id.btn_open};
+      String[] optionStrings = canBlockAd ?
+        new String[] {Lang.getString(R.string.Open), Lang.getString(R.string.CopyLink), Lang.getString(R.string.ViewPhoto), Lang.getString(R.string.AdFilterBlockAction)} :
+        new String[] {Lang.getString(R.string.Open), Lang.getString(R.string.CopyLink), Lang.getString(R.string.ViewPhoto)};
+      int[] optionIcons = canBlockAd ?
+        new int[] {R.drawable.baseline_open_in_browser_24, R.drawable.baseline_content_copy_24, R.drawable.baseline_visibility_24, R.drawable.baseline_block_24} :
+        new int[] {R.drawable.baseline_open_in_browser_24, R.drawable.baseline_content_copy_24, R.drawable.baseline_visibility_24};
+      context.showOptions(Lang.getString(R.string.OpenThisLink, url), optionIds, optionStrings, null, optionIcons, (optionItemView, id) -> {
         if (id == R.id.btn_openLink) {
           TdlibUi.UrlOpenParameters openParameters = new TdlibUi.UrlOpenParameters(this.urlOpenParameters);
           if (openParameters.tooltip == null) {
@@ -494,6 +504,12 @@ public class PageBlockMedia extends PageBlock implements MediaWrapper.OnClickLis
           UI.copyText(url, R.string.CopiedLink);
         } else if (id == R.id.btn_open) {
           openMedia(clickWrapper);
+        } else if (id == R.id.btn_blockAd) {
+          if (org.thunderdog.challegram.unsorted.ContentFilter.blockAdUrl(url)) {
+            UI.showToast(R.string.AdFilterBlockedToast, android.widget.Toast.LENGTH_SHORT);
+          } else {
+            UI.showToast(R.string.AdFilterAlreadyBlockedToast, android.widget.Toast.LENGTH_SHORT);
+          }
         }
         return true;
       });

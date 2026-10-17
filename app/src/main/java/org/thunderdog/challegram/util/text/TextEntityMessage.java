@@ -36,6 +36,7 @@ import org.thunderdog.challegram.tool.Strings;
 import org.thunderdog.challegram.tool.UI;
 import org.thunderdog.challegram.ui.HashtagChatController;
 import org.thunderdog.challegram.ui.HashtagController;
+import org.thunderdog.challegram.unsorted.ContentFilter;
 import org.thunderdog.challegram.util.StringList;
 
 import java.util.List;
@@ -700,11 +701,43 @@ public class TextEntityMessage extends TextEntity {
       icons.append(R.drawable.baseline_forward_24);
     }
 
+    // "Block ad" for URL-like entities, including t.me links behind @mentions
+    final String blockableUrl;
+    if (ContentFilter.blockAds()) {
+      switch (clickableEntity.type.getConstructor()) {
+        case TdApi.TextEntityTypeUrl.CONSTRUCTOR:
+          blockableUrl = copyText != null ? copyText.toString() : null;
+          break;
+        case TdApi.TextEntityTypeTextUrl.CONSTRUCTOR:
+          blockableUrl = ((TdApi.TextEntityTypeTextUrl) clickableEntity.type).url;
+          break;
+        case TdApi.TextEntityTypeMention.CONSTRUCTOR:
+          blockableUrl = copyLink;
+          break;
+        default:
+          blockableUrl = null;
+          break;
+      }
+    } else {
+      blockableUrl = null;
+    }
+    if (!StringUtils.isEmpty(blockableUrl)) {
+      ids.append(R.id.btn_blockAd);
+      strings.append(R.string.AdFilterBlockAction);
+      icons.append(R.drawable.baseline_block_24);
+    }
+
     final int[] shareState = {0};
 
     context.showOptions(copyText, ids.get(), strings.get(), null, icons.get(), Config.MAX_COPY_TEXT_LINE_COUNT, (itemView, id) -> {
       if (id == R.id.btn_copyLink) {
         UI.copyText(copyLink != null ? copyLink : copyText, R.string.CopiedLink);
+      } else if (id == R.id.btn_blockAd) {
+        if (ContentFilter.blockAdUrl(blockableUrl)) {
+          UI.showToast(R.string.AdFilterBlockedToast, android.widget.Toast.LENGTH_SHORT);
+        } else {
+          UI.showToast(R.string.AdFilterAlreadyBlockedToast, android.widget.Toast.LENGTH_SHORT);
+        }
       } else if (id == R.id.btn_copyText) {
         int message;
         switch (clickableEntity.type.getConstructor()) {

@@ -44,6 +44,7 @@
   <string name="AdFilterRemoveUrl">取消屏蔽</string>
   <string name="AdFilterRemoveConfirm">取消屏蔽后，该链接的广告将重新显示。</string>
   <string name="AdFilterListNote">提示：聊天列表中的广告在重新进入聊天列表后生效。</string>
+  <string name="AdFilteredPlaceholder">广告链接已屏蔽</string>
 
   <string name="ProxyTestSpeed">测速</string>
   <string name="ProxyTesting">正在测速，请稍候…</string>
