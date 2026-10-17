@@ -322,7 +322,7 @@ public class Lang {
       final String key = getResourceEntryName(resId);
       TdApi.LanguagePackStringValueOrdinary string = getStringValue(key, languagePackInfo);
       if (string != null)
-        return string.value;
+        return applyBranding(string.value);
     }
     try {
       return getAndroidString(resId);
@@ -330,6 +330,18 @@ public class Lang {
       Log.e("Resource not found (shitty modified lang pack?): %d %s", resId, getResourceEntryName(resId));
       return "";
     }
+  }
+
+  /**
+   * Cloud language packs are built for upstream Telegram X, so their strings
+   * still mention the upstream name. Rebrand them to {@link BuildConfig#PROJECT_NAME}
+   * ("Lite X") on the fly, without touching the translation platform.
+   */
+  private static String applyBranding (String value) {
+    if (value != null && value.contains("Telegram X")) {
+      value = value.replace("Telegram X", BuildConfig.PROJECT_NAME);
+    }
+    return value;
   }
 
   private static String getAndroidString (@StringRes int resId) throws Resources.NotFoundException {
@@ -436,7 +448,7 @@ public class Lang {
       TdApi.LanguagePackStringValueOrdinary string = getStringValue(key, languagePackInfo);
       if (string != null) {
         try {
-          return formatString(applyFlags(string.value, flags), hasSpanned, creator, formatArgs);
+          return formatString(applyFlags(applyBranding(string.value), flags), hasSpanned, creator, formatArgs);
         } catch (Throwable t) {
           warnResource(true, pluralCode(), resId);
         }
