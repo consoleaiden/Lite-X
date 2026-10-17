@@ -4437,9 +4437,12 @@ public class TdlibUi extends Handler {
         UI.post(() -> UI.showToast(R.string.ProxyTestFailed, Toast.LENGTH_SHORT));
         return;
       }
-      tdlib.send(new TdApi.PingProxy(((TdApi.AddedProxy) added).proxy), (result, pingError) -> {
+      int tempProxyId = added.id;
+      tdlib.send(new TdApi.PingProxy(added.proxy), (result, pingError) -> {
+        // the proxy was only registered to ping it, drop it again right away
+        tdlib.client().send(new TdApi.RemoveProxy(tempProxyId), tdlib.silentHandler());
         boolean ok = result instanceof TdApi.Seconds;
-        long pingMs = ok ? Math.round(((TdApi.Seconds) result).seconds * 1000.0) : -1;
+        long pingMs = ok ? Math.round(result.seconds * 1000.0) : -1;
         UI.post(() -> {
           if (ok) {
             UI.showToast(Lang.getString(R.string.ProxyTestResult, pingMs >= 0 ? Long.toString(pingMs) : "?"), Toast.LENGTH_SHORT);

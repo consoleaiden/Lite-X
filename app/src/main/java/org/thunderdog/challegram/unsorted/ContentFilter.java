@@ -399,10 +399,7 @@ public class ContentFilter {
       return keyboard;
     if (rows.isEmpty())
       return null;
-    TdApi.ReplyMarkupInlineKeyboard result = new TdApi.ReplyMarkupInlineKeyboard(rows.toArray(new TdApi.InlineKeyboardButton[0][]));
-    result.isPersistent = keyboard.isPersistent;
-    result.placeholder = keyboard.placeholder;
-    return result;
+    return new TdApi.ReplyMarkupInlineKeyboard(rows.toArray(new TdApi.InlineKeyboardButton[0][]), keyboard.forceReply);
   }
 
   /**
