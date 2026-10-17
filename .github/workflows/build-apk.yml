@@ -26,9 +26,15 @@ on:
         description: 'Upload auto-generated keystore as artifact (needed to re-sign updates later)'
         type: boolean
         default: false
+      publish_release:
+        description: 'Publish the built APKs to a GitHub release (the in-app "check for updates" reads it)'
+        type: boolean
+        default: true
   push:
+    # NOTE: release tags created by this workflow are `v<versionCode>-<runNumber>`
+    # and must NOT match this filter, otherwise publishing would re-trigger a build.
     tags:
-      - 'v*'
+      - 'build-*'
 
 concurrency:
   group: tgx-apk-${{ github.ref }}
@@ -168,8 +174,8 @@ jobs:
           cat <<EOF | sed 's/^[[:space:]]*//' > local.properties
           sdk.dir=$ANDROID_SDK_ROOT
           app.id=${APP_ID:-org.example.tgx}
-          app.name=${APP_NAME:-Telegram X}
-          app.download_url=https://telegram.org/dlx
+          app.name=${APP_NAME:-Lite X}
+          app.download_url=${{ github.server_url }}/${{ github.repository }}/releases/latest
           app.sources_url=${{ github.server_url }}/${{ github.repository }}
           telegram.api_id=${TELEGRAM_API_ID:-94575}
           telegram.api_hash=${TELEGRAM_API_HASH:-a3406de8d171bb422bb6ddf3bbd800e2}
@@ -245,7 +251,9 @@ jobs:
           if [ "$FLAVOR" = "legacy" ]; then
             EXTRA_ARGS="-PuseLegacyNdk=true"
           fi
-          ./gradlew $TASK $EXTRA_ARGS --stacktrace
+          # baked into BuildConfig.CI_BUILD_NUMBER so that two builds of the same
+          # app version can be told apart by the in-app updater
+          ./gradlew $TASK $EXTRA_ARGS -PciBuildNumber="${GITHUB_RUN_NUMBER:-0}" --stacktrace
 
       - name: Collect APK
         id: collect
@@ -257,6 +265,7 @@ jobs:
           cd apk-out && sha256sum *.apk | tee ../apk-out/SHA256.txt
 
       - name: Inspect APK metadata
+        id: badging
         run: |
           set -e
           prop() { grep -m1 "^$1=" version.properties | cut -d= -f2- | tr -d '\r'; }
@@ -275,12 +284,19 @@ jobs:
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           done
+          # consumed by the "Publish GitHub release" job and by the in-app updater
+          grep -m1 -o "versionCode='[0-9]*'" /tmp/badging.txt | tr -dc '0-9' > apk-out/version-code.txt
+          grep -m1 -o "versionName='[^']*'" /tmp/badging.txt | sed "s/versionName='//; s/'$//" > apk-out/version-name.txt
+          echo "versionCode=$(cat apk-out/version-code.txt), versionName=$(cat apk-out/version-name.txt)"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: tgx-${{ env.FLAVOR }}-${{ env.ABI }}-${{ env.BUILD_TYPE }}
-          path: apk-out/*.apk
+          path: |
+            apk-out/*.apk
+            apk-out/version-code.txt
+            apk-out/version-name.txt
           if-no-files-found: error
           retention-days: 30
 
@@ -292,3 +308,69 @@ jobs:
           name: tgx-ci-keystore
           path: keystore.properties
           retention-days: 90
+
+  release:
+    name: Publish GitHub release
+    # the in-app "check for updates" reads /releases/latest of this repository
+    if: ${{ inputs.publish_release != false }}
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download APKs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: tgx-*
+          merge-multiple: true
+          path: apk-out
+
+      - name: Compose release metadata
+        id: meta
+        run: |
+          set -e
+          cd apk-out
+          VERSION_CODE=$(cat version-code.txt)
+          VERSION_NAME=$(cat version-name.txt)
+          BUILD_NUMBER="${GITHUB_RUN_NUMBER:-0}"
+          rm -f version-code.txt version-name.txt
+          sha256sum *.apk > SHA256.txt
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION_CODE}-${BUILD_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "name=${VERSION_NAME} (build ${BUILD_NUMBER})" >> "$GITHUB_OUTPUT"
+          ls -lh
+          {
+            echo "## Lite X ${VERSION_NAME}"
+            echo ""
+            echo "| | |"
+            echo "|-|-|"
+            echo "| versionCode | ${VERSION_CODE} |"
+            echo "| versionName | ${VERSION_NAME} |"
+            echo "| CI build | ${BUILD_NUMBER} |"
+            echo "| flavor / build type | ${{ env.FLAVOR }} / ${{ env.BUILD_TYPE }} |"
+            echo "| APK | $(ls *.apk | tr '\n' ' ') |"
+            echo "| commit | ${{ github.sha }} |"
+            echo ""
+            echo "### 校验值"
+            echo '```'
+            cat SHA256.txt
+            echo '```'
+            echo ""
+            echo "> arm64-v8a 适用于绝大多数现代设备；armeabi-v7a 供 32 位设备使用。两个 ABI 包名相同，不能同时安装。"
+          } > ../release-notes.md
+          cat ../release-notes.md
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.name }}
+          body_path: release-notes.md
+          make_latest: true
+          draft: false
+          files: |
+            apk-out/*.apk
+            apk-out/SHA256.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

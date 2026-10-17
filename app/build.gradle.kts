@@ -373,6 +373,10 @@ android {
 
     buildConfigInt("TARGET_SDK_INT", config.build.targetSdkVersion)
 
+    // 0 for local builds; CI passes -PciBuildNumber=$GITHUB_RUN_NUMBER so that
+    // two builds of the same app version can still be told apart by the updater.
+    buildConfigInt("CI_BUILD_NUMBER", (project.findProperty("ciBuildNumber") as? String)?.toIntOrNull() ?: 0)
+
     buildConfigInt("TELEGRAM_API_ID", config.telegramApiId)
     buildConfigString("TELEGRAM_API_HASH", config.telegramApiHash)
 

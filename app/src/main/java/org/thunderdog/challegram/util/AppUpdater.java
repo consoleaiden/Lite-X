@@ -15,6 +15,8 @@ package org.thunderdog.challegram.util;
 import android.app.Activity;
 import android.content.Intent;
 import android.content.IntentSender;
+import android.os.Build;
+import android.widget.Toast;
 
 import androidx.annotation.IntDef;
 import androidx.annotation.NonNull;
@@ -53,6 +55,9 @@ import java.io.File;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 
+import org.json.JSONArray;
+import org.json.JSONObject;
+
 import me.vkryl.android.AppInstallationUtil;
 import me.vkryl.core.StringUtils;
 import me.vkryl.core.lambda.RunnableBool;
@@ -87,13 +92,15 @@ public class AppUpdater implements InstallStateUpdatedListener, FileUpdateListen
   @IntDef({
     FlowType.NONE,
     FlowType.TELEGRAM_CHANNEL,
-    FlowType.GOOGLE_PLAY
+    FlowType.GOOGLE_PLAY,
+    FlowType.GITHUB_RELEASE
   })
   public @interface FlowType {
     int
       NONE = 0,
       TELEGRAM_CHANNEL = 1,
-      GOOGLE_PLAY = 2;
+      GOOGLE_PLAY = 2,
+      GITHUB_RELEASE = 3;
   }
 
   private final BaseActivity context;
@@ -114,6 +121,10 @@ public class AppUpdater implements InstallStateUpdatedListener, FileUpdateListen
   private boolean forceTelegramChannelFlow;
   private Tdlib telegramChannelTdlib;
   private Tdlib.UpdateFileInfo telegramChannelFile;
+
+  // GitHub Releases flow
+  private String githubDownloadUrl, githubReleaseUrl;
+  private boolean manualCheck, checkFailed;
 
   @State
   private int state = State.NONE;
@@ -169,8 +180,21 @@ public class AppUpdater implements InstallStateUpdatedListener, FileUpdateListen
   }
 
   public void checkForUpdates () {
+    checkForUpdates(false);
+  }
+
+  /**
+   * @param manual whether the check was triggered by the user pressing "Check for updates".
+   *               When true, the outcome (no update / failure) is reported with a toast.
+   */
+  public void checkForUpdates (boolean manual) {
+    if (manual) {
+      manualCheck = true;
+    }
     if (state == State.NONE) {
-      if (preferTelegramChannelFlow()) {
+      if (useGitHubFlow()) {
+        checkForGitHubUpdates();
+      } else if (preferTelegramChannelFlow()) {
         checkForTelegramChannelUpdates();
       } else {
         checkForGooglePlayUpdates();
@@ -178,6 +202,34 @@ public class AppUpdater implements InstallStateUpdatedListener, FileUpdateListen
     } else if (state == State.AVAILABLE) {
       offerUpdate();
     }
+  }
+
+  /**
+   * Updates are served from the GitHub releases of this fork, see
+   * {@code .github/workflows/build-apk.yml} (the "Publish GitHub release" job).
+   */
+  public static boolean useGitHubFlow () {
+    return !StringUtils.isEmpty(BuildConfig.SOURCES_URL) && BuildConfig.SOURCES_URL.contains("github.com");
+  }
+
+  @Nullable
+  public static String gitHubReleasesApiUrl () {
+    if (!useGitHubFlow())
+      return null;
+    String url = BuildConfig.SOURCES_URL.trim();
+    int schemeIndex = url.indexOf("github.com/");
+    if (schemeIndex == -1)
+      return null;
+    String repoPath = url.substring(schemeIndex + "github.com/".length());
+    while (repoPath.endsWith("/")) {
+      repoPath = repoPath.substring(0, repoPath.length() - 1);
+    }
+    if (repoPath.endsWith(".git")) {
+      repoPath = repoPath.substring(0, repoPath.length() - ".git".length());
+    }
+    if (repoPath.isEmpty())
+      return null;
+    return "https://api.github.com/repos/" + repoPath + "/releases/latest";
   }
 
   private boolean preferTelegramChannelFlow () {
@@ -358,6 +410,203 @@ public class AppUpdater implements InstallStateUpdatedListener, FileUpdateListen
     });
   }
 
+  // == GitHub Releases flow ==
+
+  private static final class GitHubRelease {
+    public final String tagName, name, htmlUrl, downloadUrl;
+    public final long assetSize;
+    public final int versionCode, buildNumber;
+
+    GitHubRelease (String tagName, String name, String htmlUrl, String downloadUrl, long assetSize, int versionCode, int buildNumber) {
+      this.tagName = tagName;
+      this.name = name;
+      this.htmlUrl = htmlUrl;
+      this.downloadUrl = downloadUrl;
+      this.assetSize = assetSize;
+      this.versionCode = versionCode;
+      this.buildNumber = buildNumber;
+    }
+  }
+
+  /**
+   * Release tags are {@code v<versionCode>} or {@code v<versionCode>-<ciBuildNumber>}.
+   */
+  @Nullable
+  private static int[] parseReleaseVersion (String tag) {
+    String value = tag.trim();
+    if (value.startsWith("v") || value.startsWith("V")) {
+      value = value.substring(1);
+    }
+    String[] parts = value.split("-");
+    try {
+      int versionCode = Integer.parseInt(parts[0].trim());
+      int buildNumber = parts.length > 1 ? Integer.parseInt(parts[1].trim()) : 0;
+      return new int[] {versionCode, buildNumber};
+    } catch (NumberFormatException e) {
+      return null;
+    }
+  }
+
+  private static boolean isNewerThanCurrentBuild (int versionCode, int buildNumber) {
+    if (versionCode > BuildConfig.VERSION_CODE)
+      return true;
+    return versionCode == BuildConfig.VERSION_CODE && buildNumber > BuildConfig.CI_BUILD_NUMBER;
+  }
+
+  @Nullable
+  private static JSONObject findApkAsset (JSONArray assets, @Nullable String abi) {
+    for (int i = 0; i < assets.length(); i++) {
+      JSONObject asset = assets.optJSONObject(i);
+      if (asset == null)
+        continue;
+      String name = asset.optString("name", "");
+      if (!name.endsWith(".apk"))
+        continue;
+      if (abi == null || name.contains(abi))
+        return asset;
+    }
+    return null;
+  }
+
+  @Nullable
+  private static GitHubRelease parseRelease (JSONObject json) {
+    String tagName = json.optString("tag_name", null);
+    if (StringUtils.isEmpty(tagName))
+      return null;
+    int[] version = parseReleaseVersion(tagName);
+    if (version == null)
+      return null;
+    JSONArray assets = json.optJSONArray("assets");
+    if (assets == null)
+      return null;
+    JSONObject asset = null;
+    for (String abi : Build.SUPPORTED_ABIS) {
+      asset = findApkAsset(assets, abi);
+      if (asset != null)
+        break;
+    }
+    if (asset == null) {
+      asset = findApkAsset(assets, null);
+    }
+    if (asset == null)
+      return null;
+    String downloadUrl = asset.optString("browser_download_url", null);
+    if (StringUtils.isEmpty(downloadUrl))
+      return null;
+    return new GitHubRelease(
+      tagName,
+      json.optString("name", tagName),
+      json.optString("html_url", null),
+      downloadUrl,
+      asset.optLong("size", 0),
+      version[0],
+      version[1]
+    );
+  }
+
+  private static String readAll (java.io.InputStream in) throws java.io.IOException {
+    java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+    byte[] buffer = new byte[8192];
+    int read;
+    while ((read = in.read(buffer)) != -1) {
+      out.write(buffer, 0, read);
+    }
+    return out.toString("UTF-8");
+  }
+
+  @Nullable
+  private static GitHubRelease fetchLatestRelease () {
+    final String apiUrl = gitHubReleasesApiUrl();
+    if (StringUtils.isEmpty(apiUrl))
+      return null;
+    java.net.HttpURLConnection connection = null;
+    try {
+      connection = (java.net.HttpURLConnection) new java.net.URL(apiUrl).openConnection();
+      connection.setConnectTimeout(15000);
+      connection.setReadTimeout(15000);
+      connection.setRequestProperty("Accept", "application/vnd.github+json");
+      connection.setUseCaches(false);
+      connection.setInstanceFollowRedirects(true);
+      int responseCode = connection.getResponseCode();
+      if (responseCode < 200 || responseCode >= 300) {
+        Log.i("GitHub release check responded with %d", responseCode);
+        return null;
+      }
+      String response;
+      java.io.InputStream stream = connection.getInputStream();
+      try {
+        response = readAll(stream);
+      } finally {
+        stream.close();
+      }
+      return parseRelease(new JSONObject(response));
+    } catch (Throwable t) {
+      Log.i("Unable to check GitHub releases", t);
+      return null;
+    } finally {
+      if (connection != null) {
+        connection.disconnect();
+      }
+    }
+  }
+
+  private void checkForGitHubUpdates () {
+    setState(State.CHECKING);
+    new Thread(() -> {
+      final GitHubRelease release = fetchLatestRelease();
+      UI.post(() -> {
+        checkFailed = release == null;
+        if (release == null || !isNewerThanCurrentBuild(release.versionCode, release.buildNumber)) {
+          onUpdateUnavailable();
+          return;
+        }
+        this.githubDownloadUrl = release.downloadUrl;
+        this.githubReleaseUrl = release.htmlUrl;
+        this.manualCheck = false;
+        onUpdateAvailable(FlowType.GITHUB_RELEASE, 0, release.assetSize,
+          StringUtils.isEmpty(release.name) ? release.tagName : release.name, null, false);
+      });
+    }, "github-update-check").start();
+  }
+
+  private boolean offerGitHubUpdate () {
+    switch (Settings.instance().getAutoUpdateMode()) {
+      case Settings.AUTO_UPDATE_MODE_NEVER: {
+        break;
+      }
+      case Settings.AUTO_UPDATE_MODE_ALWAYS: {
+        downloadUpdate();
+        return true;
+      }
+      case Settings.AUTO_UPDATE_MODE_PROMPT:
+      case Settings.AUTO_UPDATE_MODE_WIFI_ONLY:
+      default: {
+        ViewController<?> c = context.navigation().getCurrentStackItem();
+        if (c != null && c.isFocused()) {
+          ViewController.Options.Builder b = new ViewController.Options.Builder()
+            .info(Lang.getMarkdownString(c, R.string.AppUpdateGithubPrompt, Lang.boldCreator(),
+              Strings.buildSize(totalBytesToDownload()), displayVersion()))
+            .item(new ViewController.OptionItem(R.id.btn_update, Lang.getString(R.string.DownloadUpdate), ViewController.OptionColor.BLUE, R.drawable.baseline_system_update_24));
+          if (!StringUtils.isEmpty(githubReleaseUrl)) {
+            b.item(new ViewController.OptionItem(R.id.btn_sourceCode, Lang.getString(R.string.UpdateChangelog), ViewController.OptionColor.NORMAL, R.drawable.baseline_github_24));
+          }
+          b.cancelItem();
+          c.showOptions(b.build(), (optionItemView, id) -> {
+            if (id == R.id.btn_update) {
+              downloadUpdate();
+            } else if (id == R.id.btn_sourceCode) {
+              UI.openUrl(githubReleaseUrl);
+            }
+            return true;
+          });
+          return true;
+        }
+        break;
+      }
+    }
+    return false;
+  }
+
   private boolean offerTelegramChannelUpdate () {
     switch (Settings.instance().getAutoUpdateMode()) {
       case Settings.AUTO_UPDATE_MODE_PROMPT: {
@@ -466,6 +715,10 @@ public class AppUpdater implements InstallStateUpdatedListener, FileUpdateListen
           updateOffered = offerTelegramChannelUpdate();
           break;
         }
+        case FlowType.GITHUB_RELEASE: {
+          updateOffered = offerGitHubUpdate();
+          break;
+        }
       }
     }
   }
@@ -485,6 +738,14 @@ public class AppUpdater implements InstallStateUpdatedListener, FileUpdateListen
       case FlowType.TELEGRAM_CHANNEL: {
         // TODO add tdlib reference & show progress
         telegramChannelTdlib.files().downloadFile(telegramChannelFile.document.document);
+        break;
+      }
+      case FlowType.GITHUB_RELEASE: {
+        // The APK is hosted on GitHub releases: hand the download over to the browser,
+        // the user then installs it like any other side-loaded package.
+        if (!StringUtils.isEmpty(githubDownloadUrl)) {
+          UI.openUrl(githubDownloadUrl);
+        }
         break;
       }
     }
@@ -533,5 +794,9 @@ public class AppUpdater implements InstallStateUpdatedListener, FileUpdateListen
 
   private void onUpdateUnavailable () {
     setState(State.NONE);
+    if (manualCheck) {
+      manualCheck = false;
+      UI.showToast(checkFailed ? R.string.UpdateCheckFailed : R.string.UpdateCheckNoUpdates, Toast.LENGTH_SHORT);
+    }
   }
 }

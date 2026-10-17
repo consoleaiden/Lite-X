@@ -49,4 +49,10 @@
   <string name="ProxyTesting">正在测速，请稍候…</string>
   <string name="ProxyTestResult">测速完成：%1$s ms</string>
   <string name="ProxyTestFailed">测速失败：无法连接该代理</string>
+
+  <!-- GitHub Releases based in-app updater (custom feature) -->
+  <string name="AppUpdateGithubPrompt">**Lite X** `%2$s` 新版本已发布，是否现在下载更新？(%1$s)</string>
+  <string name="UpdateChangelog">查看更新日志</string>
+  <string name="UpdateCheckNoUpdates">当前已是最新版本</string>
+  <string name="UpdateCheckFailed">检查更新失败，请稍后重试</string>
 </resources>

@@ -664,7 +664,8 @@ public class SettingsController extends ViewController<Void> implements
     AppInstallationUtil.DownloadUrl downloadUrl = AppUpdater.getDownloadUrl(null);
     @DrawableRes int downloadIconRes;
     @StringRes int downloadStringRes = R.string.CheckForUpdates;
-    if (tdlib.hasUrgentInAppUpdate() && tdlib.isProduction()) {
+    boolean urgentUpdate = tdlib.hasUrgentInAppUpdate() && tdlib.isProduction();
+    if (urgentUpdate) {
       downloadIconRes = R.drawable.baseline_warning_24;
       downloadUrl = new AppInstallationUtil.DownloadUrl(downloadUrl.installerId, tdlib.tMeUrl(BuildConfig.TELEGRAM_UPDATES_CHANNEL));
     } else {
@@ -699,6 +700,11 @@ public class SettingsController extends ViewController<Void> implements
         default:
           throw new UnsupportedOperationException();
       }
+    }
+    if (!urgentUpdate && AppUpdater.useGitHubFlow()) {
+      // updates are published to the GitHub releases of this fork
+      downloadIconRes = R.drawable.baseline_github_24;
+      downloadStringRes = R.string.CheckForUpdates;
     }
     items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_checkUpdates, downloadIconRes, downloadStringRes)
       .setData(downloadUrl));
@@ -1161,7 +1167,12 @@ public class SettingsController extends ViewController<Void> implements
     } else if (viewId == R.id.btn_devices) {
       navigateTo(new SettingsSessionsController(context, tdlib));
     } else if (viewId == R.id.btn_checkUpdates) {
-      openInstallerPage(((AppInstallationUtil.DownloadUrl) ((ListItem) v.getTag()).getData()));
+      if (AppUpdater.useGitHubFlow()) {
+        // check the GitHub releases of this fork instead of an app store
+        context.appUpdater().checkForUpdates(true);
+      } else {
+        openInstallerPage(((AppInstallationUtil.DownloadUrl) ((ListItem) v.getTag()).getData()));
+      }
     } else if (viewId == R.id.btn_subscribeToBeta) {
       tdlib.ui().subscribeToBeta(this);
     } else if (viewId == R.id.btn_sourceCodeChanges) {// TODO provide an ability to view changes in PRs if they are present in both builds
