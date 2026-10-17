@@ -1156,80 +1156,11 @@ public class MainController extends ViewPagerController<Void> implements Menu, M
     }
   }
 
-  private TdApi.LanguagePackInfo loadingLanguagePack;
-
   private boolean showLanguageSuggestion () {
-    String languagePackId = tdlib.suggestedLanguagePackId();
-    TdApi.LanguagePackInfo languagePack = Settings.instance().suggestedLanguagePackInfo(languagePackId, tdlib);
-    if (languagePack == null) {
-      loadingLanguagePack = null;
-      return false;
-    }
-    if (loadingLanguagePack != null && loadingLanguagePack.id.equals(languagePack.id))
-      return true;
-    loadingLanguagePack = languagePack;
-    String[] keys = Lang.getKeys(new int[] {
-      R.string.language_continueInLanguage,
-      R.string.language_continueInLanguagePopupText,
-      R.string.language_appliedLanguage
-    });
-    tdlib.getStrings(languagePack, keys, cloudStrings -> {
-      boolean isBadLanguage = cloudStrings == null || cloudStrings.size() < keys.length;
-      if (isBadLanguage) {
-        Log.w("Suggested language is bad, ignoring. languagePackId:%s", languagePack.id);
-        if (loadingLanguagePack != null && languagePack.id.equals(loadingLanguagePack.id))
-          loadingLanguagePack = null;
-        return;
-      }
-      tdlib.ui().post(() -> {
-        if (!isDestroyed() && loadingLanguagePack != null && languagePack.id.equals(loadingLanguagePack.id)) {
-          IntList ids = new IntList(3);
-          StringList strings = new StringList(3);
-          IntList colors = new IntList(3);
-          IntList icons = new IntList(3);
-
-          ids.append(R.id.btn_done);
-          strings.append(TD.findOrdinary(cloudStrings, Lang.getResourceEntryName(R.string.language_continueInLanguage), () -> Lang.getString(R.string.language_continueInLanguage)));
-          colors.append(OptionColor.BLUE);
-          icons.append(R.drawable.baseline_check_24);
-
-          ids.append(R.id.btn_cancel);
-          icons.append(R.drawable.baseline_cancel_24);
-          colors.append(OptionColor.NORMAL);
-          strings.append(R.string.Cancel);
-
-          ids.append(R.id.btn_languageSettings);
-          strings.append(R.string.MoreLanguages);
-          colors.append(OptionColor.NORMAL);
-          icons.append(R.drawable.baseline_language_24);
-
-          CharSequence text = Strings.buildMarkdown(this, TD.findOrdinary(cloudStrings, Lang.getResourceEntryName(R.string.language_continueInLanguagePopupText), () -> Lang.getString(R.string.language_continueInLanguagePopupText)), null);
-
-          PopupLayout popupLayout = showOptions(text, ids.get(), strings.get(), colors.get(), icons.get(), (itemView, id) -> {
-            if (id == R.id.btn_done) {
-              tdlib.applyLanguage(languagePack, applySuccess -> {
-                if (applySuccess) {
-                  UI.showToast(R.string.language_appliedLanguage, Toast.LENGTH_SHORT);
-                  Settings.instance().setRecommendedLanguagePackId(languagePackId);
-                }
-              }, true);
-            } else if (id == R.id.btn_cancel) {
-              Settings.instance().setRecommendedLanguagePackId(languagePackId);
-            } else if (id == R.id.btn_languageSettings) {
-              Settings.instance().setRecommendedLanguagePackId(languagePackId);
-              navigateTo(new SettingsLanguageController(context, tdlib));
-            }
-            return true;
-          });
-          if (popupLayout != null) {
-            popupLayout.setDisableCancelOnTouchDown(true);
-          }
-          loadingLanguagePack = null;
-        }
-      });
-    });
-    return true;
+    // Language switching is disabled: the app is pinned to the built-in language.
+    return false;
   }
+
 
   private boolean showEmojiUpdateSuggestion () {
     Settings.EmojiPack emojiPack = Settings.instance().getOutdatedEmojiPack();
