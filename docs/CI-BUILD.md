@@ -24,7 +24,7 @@
 Actions → **Build APK** → *Run workflow*，可选：
 
 - `build_type`：`Debug`（默认，最稳） / `Release`
-- `flavor`：`qrs`（默认，minSdk 29） / `latest` / `tens` / `marshmallow` / `lollipop` / `legacy`
+- `flavor`：`marshmallow`（默认，minSdk 23） / `latest` / `lollipop` / `legacy`
 - `abi`：`both`（默认，并行出 `arm64-v8a` + `armeabi-v7a` 两个包） / `arm64` / `arm32` / `universal` / `x64` / `x86`
 - `free_disk_space`：默认开，删掉镜像预装的 dotnet/Android SDK/Haskell 等，多腾出约 8–10 GB
 - `save_generated_keystore`：导出临时 keystore（公开仓库慎开）
@@ -34,16 +34,22 @@ Actions → **Build APK** → *Run workflow*，可选：
 
 ### flavor 与系统版本对照（来自 `buildSrc/.../Config.kt`）
 
-| flavor | minSdk | maxSdk | 适用 |
-| --- | --- | --- | --- |
-| `latest` | 33 | — | Android 13+ |
-| `qrs` | 29 | 32 | Android 10–12 |
-| `tens` | 24 | 28 | Android 7–9 |
-| `marshmallow` | 23 | 23 | Android 6 |
-| `lollipop` | 21 | 22 | Android 5 |
-| `legacy` | 16 | 20 | Android 4.x（用老 NDK） |
+| flavor | minSdk | maxSdk | 适用 | 可用？ |
+| --- | --- | --- | --- | --- |
+| `latest` | 33 | — | Android 13+ | ✅ |
+| `qrs` | 29 | 32 | Android 10–12 | ❌ 原生层不支持 |
+| `tens` | 24 | 28 | Android 7–9 | ❌ 原生层不支持 |
+| `marshmallow` | 23 | 23 | Android 6+（推荐） | ✅ |
+| `lollipop` | 21 | 22 | Android 5+ | ✅ |
+| `legacy` | 16 | 20 | Android 4.x（用老 NDK） | ✅ |
+
+> **`qrs` / `tens` 不要用**：Gradle 侧定义了 6 个 SDK flavor，但 `app/jni/CMakeLists.txt:9` 的白名单只写了
+> `^(legacy|lollipop|marshmallow|latest)$`，传给 CMake 的 `-DTGX_FLAVOR` 不在白名单内就会在 `configureCMake` 阶段
+> 直接 `FATAL_ERROR: Unknown flavor`。工作流里的 *Validate flavor against native whitelist* 步骤会提前拦下。
+> 想在 fork 里放开的话，把那个正则补上 `tens|qrs` 即可 —— CMake 里 flavor 除了 `legacy` 关掉 tgvoip 之外没有其他分支。
 
 > `maxSdk` 只在 **Release** 构建写入 manifest（见 `Extensions.kt` 的 `!isDebug` 判断），Debug 包不受上限约束。
+> 所以 `marshmallow` + Debug 在 Android 12 上照样能装。
 > 手机上用 `adb shell getprop ro.build.version.sdk` 查 API 级别，选 minSdk ≤ 该值的 flavor。
 
 ## 3. 工作流做了什么（以及为什么）
@@ -71,6 +77,7 @@ Actions → **Build APK** → *Run workflow*，可选：
 | `No space left on device` | 改单 ABI（`arm64`）、确认 `free_disk_space` 已开，或换更大 runner / 自建 runner |
 | `sdk.dir is not set` | `local.properties` 生成步骤失败 |
 | Release 构建卡在 `fetchLocalizedStrings` | 该任务会访问 translations.telegram.org 拉取全部语言；网络不通时改用 `Debug` |
+| `Unknown flavor: qrs`（`configureCMake` 阶段） | 该 flavor 不在 `app/jni/CMakeLists.txt` 的白名单里，改用 `marshmallow` / `latest` / `lollipop` / `legacy` |
 | 手机提示「解析包失败」 | 90% 是 APK 的 minSdk 高于手机系统版本（用 `adb install` 会明确报 `INSTALL_FAILED_OLDER_SDK: Requires newer sdk version #33`）。换一个 minSdk 更低的 flavor |
 | 构建超时 | 首次全量编译（含 WebRTC/FFmpeg/libvpx）通常 1–2 小时，上限已设为 360 分钟 |
 
