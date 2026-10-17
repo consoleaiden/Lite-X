@@ -285,9 +285,10 @@ jobs:
             } >> "$GITHUB_STEP_SUMMARY"
           done
           # consumed by the "Publish GitHub release" job and by the in-app updater
-          grep -m1 -o "versionCode='[0-9]*'" /tmp/badging.txt | tr -dc '0-9' > apk-out/version-code.txt
-          grep -m1 -o "versionName='[^']*'" /tmp/badging.txt | sed "s/versionName='//; s/'$//" > apk-out/version-name.txt
-          echo "versionCode=$(cat apk-out/version-code.txt), versionName=$(cat apk-out/version-name.txt)"
+          # (one file per ABI, the release job prefers arm64)
+          grep -m1 -o "versionCode='[0-9]*'" /tmp/badging.txt | tr -dc '0-9' > "apk-out/version-code-${ABI}.txt"
+          grep -m1 -o "versionName='[^']*'" /tmp/badging.txt | sed "s/versionName='//; s/'$//" > "apk-out/version-name-${ABI}.txt"
+          echo "versionCode=$(cat "apk-out/version-code-${ABI}.txt"), versionName=$(cat "apk-out/version-name-${ABI}.txt")"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -295,8 +296,8 @@ jobs:
           name: tgx-${{ env.FLAVOR }}-${{ env.ABI }}-${{ env.BUILD_TYPE }}
           path: |
             apk-out/*.apk
-            apk-out/version-code.txt
-            apk-out/version-name.txt
+            apk-out/version-code-*.txt
+            apk-out/version-name-*.txt
           if-no-files-found: error
           retention-days: 30
 
@@ -330,10 +331,11 @@ jobs:
         run: |
           set -e
           cd apk-out
-          VERSION_CODE=$(cat version-code.txt)
-          VERSION_NAME=$(cat version-name.txt)
+          # arm64 is the reference build, fall back to whatever ABI was built
+          VERSION_CODE=$(cat version-code-arm64.txt 2>/dev/null || cat version-code-*.txt | head -1)
+          VERSION_NAME=$(cat version-name-arm64.txt 2>/dev/null || cat version-name-*.txt | head -1)
           BUILD_NUMBER="${GITHUB_RUN_NUMBER:-0}"
-          rm -f version-code.txt version-name.txt
+          rm -f version-code-*.txt version-name-*.txt
           sha256sum *.apk > SHA256.txt
           echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
           echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
