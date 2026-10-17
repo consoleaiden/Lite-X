@@ -13,6 +13,7 @@ import org.thunderdog.challegram.core.Lang;
 import org.thunderdog.challegram.telegram.Tdlib;
 import org.thunderdog.challegram.tool.Strings;
 import org.thunderdog.challegram.tool.UI;
+import org.thunderdog.challegram.unsorted.ContentFilter;
 import org.thunderdog.challegram.unsorted.Settings;
 
 import java.util.List;
@@ -221,6 +222,9 @@ public class ContentPreview {
   private static ContentPreview getContentPreview (Tdlib tdlib, long chatId, @Nullable TdApi.Message message, boolean allowContent, boolean isChatList, boolean checkChatRestrictions) {
     if (message == null) {
       return new ContentPreview(EMOJI_ERROR, 0, Lang.getString(R.string.DeletedMessage), false);
+    }
+    if (ContentFilter.isEnabled() && ContentFilter.matches(message)) {
+      return new ContentPreview(EMOJI_INFO, 0, Lang.getString(R.string.ContentFilteredPreview), false);
     }
     if (Settings.instance().needRestrictContent()) {
       String restrictionText = Lang.getRestrictionText(message.restrictionInfo);

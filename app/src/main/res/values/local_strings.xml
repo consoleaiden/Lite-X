@@ -11,4 +11,25 @@
 
   <string name="EmulatorDetectorReport_title">False-positive emulator detection warning on %1$s \`%2$s\`</string>
   <string name="EmulatorDetectorReport_text">Hello. I use **Telegram X** on a real device, but it says I am running on an emulator.\n\n**My real device details:**\n\nName: %1$s \`%2$s\`\nProduct: \`%3$s\`\nDevice: \`%4$s\`\nHardware: \`%5$s\`\n\n**The app version I am using:**\n\n%6$s\n\n**Emulator detection result:** `%7$s`\n\nPlease take a look if this warning can be resolved for my device.\nThank you!</string>
+
+  <!-- Content filter (custom feature, not part of the upstream app) -->
+  <string name="ContentFilterTitle">内容过滤</string>
+  <string name="ContentFilterEnabled">启用内容过滤</string>
+  <string name="ContentFilterEnabledInfo">开启后，命中规则的聊天内容会按所选模式处理，聊天列表与聊天窗口会立即生效；关闭后原内容会重新显示。</string>
+  <string name="ContentFilterMode">过滤模式</string>
+  <string name="ContentFilterModeHide">完全过滤</string>
+  <string name="ContentFilterModeHideInfo">命中的消息直接不显示。</string>
+  <string name="ContentFilterModeCollapse">折叠提示</string>
+  <string name="ContentFilterModeCollapseInfo">命中的消息折叠成一行提示，点击该消息可展开查看原文。</string>
+  <string name="ContentFilterRules">过滤规则</string>
+  <string name="ContentFilterNoRules">还没有添加任何规则。</string>
+  <string name="ContentFilterAddRule">添加规则</string>
+  <string name="ContentFilterRemoveRule">删除规则</string>
+  <string name="ContentFilterRemoveConfirm">确定删除这条过滤规则？</string>
+  <string name="ContentFilterTypeKeyword">关键词</string>
+  <string name="ContentFilterTypeRegex">正则表达式</string>
+  <string name="ContentFilterPatternHint">输入关键词或正则表达式</string>
+  <string name="ContentFilterInvalidRegex">正则表达式无效</string>
+  <string name="ContentFilteredCollapsed">内容已被过滤，点击查看</string>
+  <string name="ContentFilteredPreview">消息已被过滤</string>
 </resources>

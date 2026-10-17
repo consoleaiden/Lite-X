@@ -4331,7 +4331,40 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
 
   // Getters
 
+  // == Content filter ==
+
+  private boolean contentFilterExpanded;
+
+  /**
+   * Whether this message is currently hidden behind the content filter placeholder.
+   * Overridden by message types that carry text.
+   */
+  public boolean isContentFiltered () {
+    return false;
+  }
+
+  public final boolean isContentFilterExpanded () {
+    return contentFilterExpanded;
+  }
+
+  /**
+   * Expands a message that was collapsed by the content filter.
+   * @return true if this call actually expanded the message
+   */
+  public boolean expandContentFilter () {
+    if (isContentFiltered() && !contentFilterExpanded) {
+      contentFilterExpanded = true;
+      return true;
+    }
+    return false;
+  }
+
   public boolean onMessageClick (MessageView v, MessagesController c) {
+    if (expandContentFilter()) {
+      rebuildLayout();
+      invalidate();
+      return true;
+    }
     // TODO
     return /* isEventLog() */ false;
   }

@@ -43,6 +43,7 @@ import org.thunderdog.challegram.telegram.TdlibDelegate;
 import org.thunderdog.challegram.telegram.TdlibMessageViewer;
 import org.thunderdog.challegram.tool.Strings;
 import org.thunderdog.challegram.tool.UI;
+import org.thunderdog.challegram.unsorted.ContentFilter;
 import org.thunderdog.challegram.unsorted.Settings;
 
 import java.util.ArrayList;
@@ -1411,6 +1412,9 @@ public class MessagesLoader implements Client.ResultHandler {
     TGMessage unreadBadged = null;
 
     for (int j = maxIndex; j >= minIndex; j--) {
+      if (ContentFilter.shouldHide(messages[j])) {
+        continue;
+      }
       if (needMeasureSpeed) {
         startMeasureStep();
       }

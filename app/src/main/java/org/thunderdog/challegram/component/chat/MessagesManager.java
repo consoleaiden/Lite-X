@@ -67,6 +67,7 @@ import org.thunderdog.challegram.ui.FeatureToggles;
 import org.thunderdog.challegram.ui.ListItem;
 import org.thunderdog.challegram.ui.MessagesController;
 import org.thunderdog.challegram.ui.SettingHolder;
+import org.thunderdog.challegram.unsorted.ContentFilter;
 import org.thunderdog.challegram.unsorted.Settings;
 import org.thunderdog.challegram.util.CancellableResultHandler;
 import org.thunderdog.challegram.util.ScrollJumpCompensator;
@@ -3425,6 +3426,8 @@ public class MessagesManager implements Client.ResultHandler, MessagesSearchMana
     if (TD.isScheduled(message) == areScheduled()) {
       if (indexOfSentMessage(message.chatId, message.id) != -1)
         return;
+      if (ContentFilter.shouldHide(message))
+        return;
       final TdApi.Chat chat = tdlib.chatStrict(message.chatId);
       final TGMessage parsedMessage = TGMessage.valueOf(this, message, chat, messageThread, chatAdmins);
       showMessage(chat.id, parsedMessage);
@@ -3457,6 +3460,9 @@ public class MessagesManager implements Client.ResultHandler, MessagesSearchMana
         parsedMessages.add(cur);
       }
       cur = TGMessage.valueOf(this, message, chat, messageThread, chatAdmins);
+      if (cur != null && ContentFilter.shouldHide(message)) {
+        cur = null;
+      }
     }
     if (cur != null) {
       cur.prepareLayout();

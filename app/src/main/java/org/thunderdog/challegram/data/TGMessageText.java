@@ -26,6 +26,7 @@ import org.drinkless.tdlib.TdApi;
 import org.thunderdog.challegram.component.chat.MessageView;
 import org.thunderdog.challegram.component.chat.MessagesManager;
 import org.thunderdog.challegram.config.Config;
+import org.thunderdog.challegram.R;
 import org.thunderdog.challegram.core.Lang;
 import org.thunderdog.challegram.loader.ComplexReceiver;
 import org.thunderdog.challegram.loader.DoubleImageReceiver;
@@ -37,6 +38,7 @@ import org.thunderdog.challegram.theme.ColorId;
 import org.thunderdog.challegram.tool.Screen;
 import org.thunderdog.challegram.tool.Strings;
 import org.thunderdog.challegram.tool.Views;
+import org.thunderdog.challegram.unsorted.ContentFilter;
 import org.thunderdog.challegram.unsorted.Settings;
 import org.thunderdog.challegram.util.text.Highlight;
 import org.thunderdog.challegram.util.text.Text;
@@ -145,6 +147,20 @@ public class TGMessageText extends TGMessage {
 
   public TdApi.FormattedText getText () {
     return text;
+  }
+
+  @Override
+  public boolean isContentFiltered () {
+    return text != null && ContentFilter.shouldCollapse(text.text);
+  }
+
+  @Override
+  public boolean expandContentFilter () {
+    if (!super.expandContentFilter())
+      return false;
+    if (text != null)
+      setText(text, true, true, false);
+    return true;
   }
 
   @Nullable
@@ -269,7 +285,11 @@ public class TGMessageText extends TGMessage {
         }
       };
       TextWrapper wrapper;
-      if (translatedText != null) {
+      if (isContentFiltered() && !isContentFilterExpanded()) {
+        // Collapsed by the content filter: show a placeholder instead of the text
+        wrapper = new TextWrapper(Lang.getString(R.string.ContentFilteredCollapsed), getTextStyleProvider(), colorSet)
+          .setClickCallback(clickCallback());
+      } else if (translatedText != null) {
         wrapper = new TextWrapper(translatedText.text, getTextStyleProvider(), colorSet)
           .setEntities(TextEntity.valueOf(tdlib, translatedText, openParameters()), textMediaListener)
           .setHighlightText(getHighlightedText(Highlight.Pool.KEY_TEXT, translatedText.text))

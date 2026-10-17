@@ -1433,4 +1433,13 @@
   <item type="id" name="btn_playback_speed_1_2" />
   <item type="id" name="btn_playback_speed_1_5" />
   <item type="id" name="btn_playback_speed_2_0" />
+
+  <!-- Content filter -->
+  <item type="id" name="controller_contentFilter" />
+  <item type="id" name="btn_contentFilterSettings" />
+  <item type="id" name="btn_contentFilterEnabled" />
+  <item type="id" name="btn_contentFilterModeHide" />
+  <item type="id" name="btn_contentFilterModeCollapse" />
+  <item type="id" name="btn_contentFilterAddRule" />
+  <item type="id" name="btn_contentFilterRemoveRule" />
 </resources>

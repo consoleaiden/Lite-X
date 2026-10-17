@@ -555,7 +555,7 @@
   <string name="slideToCancel">滑动以取消</string>
   <string name="fingerprint_hint3">请在系统设置 &gt; 安全 &gt; 指纹中添加至少一个指纹。</string>
   <string name="fingerprint_fail">未知指纹</string>
-  <string name="biometrics_hint3">请在 \\"系统设置\\" &gt; \\"安全\\" &gt; \\"生物识别\\" 中录入生物识别信息。</string>
+  <string name="biometrics_hint3">请在 \"系统设置\" &gt; \"安全\" &gt; \"生物识别\" 中录入生物识别信息。</string>
   <string name="biometrics_fail">未知的生物识别</string>
   <string name="cam_hint">请在「系统设置 &gt; 应用 &gt; Telegram X &gt; 应用权限」中允许 Telegram X 调用相机</string>
   <string name="Settings">设置</string>
@@ -1387,7 +1387,7 @@
   <string name="ActionAddedPollOutOption">您已将 “%1$s” 添加到投票中</string>
   <string name="ActionAddedPollOutOptionMsg">您向投票活动 “%2$s” 添加了选项 “%1$s”</string>
 
-  <string name="ActionDeletedPollOption">%1$s 已移除投票活动中的选项  \\"%2$s\\"</string>
+  <string name="ActionDeletedPollOption">%1$s 已移除投票活动中的选项  \"%2$s\"</string>
   <string name="ActionDeletedPollOptionMsg">%1$s 已移除投票活动 ”%3$s“ 中的选项 ”%2$s“</string>
   <string name="ActionDeletedPollOutOption">您移除了投票选项 “%1$s”</string>
   <string name="ActionDeletedPollOutOptionMsg">你已移除投票活动 “%2$s” 中的选项 “%1$s”</string>
@@ -2417,7 +2417,7 @@
   <string name="EventLogTagYouRemoved">您已移除 %2$s 的标签 ”%1$s“</string>
   <string name="EventLogTagYouSet">您已为 %2$s 设置标签 ”%1$s“</string>
   <string name="EventLogTagRemovedYour">%2$s 已移除您的标签 ”%1$s“</string>
-  <string name="EventLogTagRemoved">%2$s 移除了 %3$s 的 \\"%1$s\\" 标签</string>
+  <string name="EventLogTagRemoved">%2$s 移除了 %3$s 的 \"%1$s\" 标签</string>
   <string name="EventLogTagSetYour">%2$s 已为您设置标签 ”%1$s“</string>
   <string name="EventLogTagSet">%2$s 已将 %3$s 的标签设置为 “%1$s”</string>
 
@@ -3231,7 +3231,7 @@
   <string name="email_LoginHelp">recover@telegram.org</string>
 
   <string name="email_LoginTooLong_subject">Telegram X 连接问题</string>
-  <string name="email_LoginTooLong_text">My Internet service provider is: （请在此处输入您的 ISP 名称，建议使用英文填写）\n\nI\\'ve just installed the application and tried to start messaging, but Telegram X is unable to connect to the server. Please help.\n\nApp version: %1$s\nLanguage: %2$s\nAwait time: %3$s\nSystem Language: %4$s\nSystem Version: %5$s</string>
+  <string name="email_LoginTooLong_text">My Internet service provider is: （请在此处输入您的 ISP 名称，建议使用英文填写）\n\nI\'ve just installed the application and tried to start messaging, but Telegram X is unable to connect to the server. Please help.\n\nApp version: %1$s\nLanguage: %2$s\nAwait time: %3$s\nSystem Language: %4$s\nSystem Version: %5$s</string>
 
   <string name="email_LoginDeadEnd_subject">Telegram X 短信未发送：%1$s</string>
   <string name="email_LoginDeadEnd_text">\"我的网络服务供应商（ISP）是：（请输入名称）\n\n我正在尝试使用我的手机号码：%1$s \n但是 Telegram 无法向我发送带有验证码的短信。请给予帮忙。 \n\n以下是可能有助于理解问题的所有详细信息：\n%2$s\n错误：%3$s \"</string>
@@ -3796,13 +3796,13 @@
   <string name="LaunchAppGuideDiskFull">Telegram X启动失败是因为设备空间已满。\n\n确保有足够的可用存储空间，然后按**启动应用程序**再试一次。\n\n目前可用空间： %1$s</string>
 
   <string name="LaunchSubtitleDatabaseBroken">数据库损坏</string>
-  <string name="LaunchAppGuideDatabaseBroken">Telegram X 之前因为TDLib数据损坏未能启动。可能由于设备存储故障出现这种情况。\n\n点按 **启动 App** 再试一次。如果依旧失败，请尝试以下几个步骤：\n\n• 确保储存空间可用： **%1$s**。\n• 确保没有其他储存问题，例如SD卡弹出或无法识别。\n• 重启您的设备。\n\n如果这没有帮助，您可能希望在[TDLib\\'s GitHub page](https://github.com/tdlib/td/issues)上查找类似的问题以获取可能的解决方案，或者创建一个新问题，包括错误消息和设备细节。</string>
+  <string name="LaunchAppGuideDatabaseBroken">Telegram X 之前因为TDLib数据损坏未能启动。可能由于设备存储故障出现这种情况。\n\n点按 **启动 App** 再试一次。如果依旧失败，请尝试以下几个步骤：\n\n• 确保储存空间可用： **%1$s**。\n• 确保没有其他储存问题，例如SD卡弹出或无法识别。\n• 重启您的设备。\n\n如果这没有帮助，您可能希望在[TDLib\'s GitHub page](https://github.com/tdlib/td/issues)上查找类似的问题以获取可能的解决方案，或者创建一个新问题，包括错误消息和设备细节。</string>
 
   <string name="LaunchSubtitleExternalError">外部错误</string>
-  <string name="LaunchAppGuideExternalError">Telegram X 之前因为设备出错未能启动。\n\n点按 **启动 App** 再试一次。如果依旧失败，请尝试以下几个步骤：\n\n• 确保储存空间可用： **%1$s**。\n• 确保没有其他储存问题，例如 SD 卡弹出或无法识别。\n• 重启您的设备。\n\n如果这没有帮助，您可能希望在 [TDLib\\'s GitHub page](https://github.com/tdlib/td/issues) 上查找类似的问题以获取可能的解决方案，或者创建一个新问题，包括错误消息和设备细节。</string>
+  <string name="LaunchAppGuideExternalError">Telegram X 之前因为设备出错未能启动。\n\n点按 **启动 App** 再试一次。如果依旧失败，请尝试以下几个步骤：\n\n• 确保储存空间可用： **%1$s**。\n• 确保没有其他储存问题，例如 SD 卡弹出或无法识别。\n• 重启您的设备。\n\n如果这没有帮助，您可能希望在 [TDLib\'s GitHub page](https://github.com/tdlib/td/issues) 上查找类似的问题以获取可能的解决方案，或者创建一个新问题，包括错误消息和设备细节。</string>
 
   <string name="LaunchSubtitleTdlibIssue">TDLib 致命错误。版本号：%1$s</string>
-  <string name="LaunchAppGuideTdlibIssue">Telegram X 之前因为 TDLib 致命错误未能启动。可能由于设备存储故障出现这种情况。\n\n点按 **启动 App** 再试一次。如果依旧失败，请尝试以下几个步骤：\n\n• [确保](%2$s) 你安装了最新版本的 Telegram X version。\n• 重启您的设备。\n\n**如果以上步骤没有帮助**\n\n1. 使用下面其中一个方式向 TDLib 开发者分享错误细节：\n— 在其他设备或者 [Telegram Web](https://web.telegram.org/)私信[@tdlib_bot](https://t.me/tdlib_bot)。\n— 在 [GitHub page](https://github.com/tdlib/td/issues)公开分享。 **不要** 公开分享 **tdlib_log.txt** 文件。\n2. 耐心等待响应。\n3. 根据TDLib开发人员的要求更改以下日志设置。\n4. 点按 **启动 APP** 使 APP 再次强制停止。\n5. 向TDLib开发人员分享 **tdlib_log.txt** 文件，并等待问题解决。\n6. 更新后，你将能够正常启动应用。\n\n**替代选项**\n\n• 在[TDLib\\'s GitHub page](https://github.com/tdlib/td/issues) 上查找类似的问题以获取可能的解决方案。\n• 重新安装 APP。私密聊天将丢失。如果您使用的是同一个电话号码，则会从 Telegram 云服务器中恢复所有其他对话和数据。</string>
+  <string name="LaunchAppGuideTdlibIssue">Telegram X 之前因为 TDLib 致命错误未能启动。可能由于设备存储故障出现这种情况。\n\n点按 **启动 App** 再试一次。如果依旧失败，请尝试以下几个步骤：\n\n• [确保](%2$s) 你安装了最新版本的 Telegram X version。\n• 重启您的设备。\n\n**如果以上步骤没有帮助**\n\n1. 使用下面其中一个方式向 TDLib 开发者分享错误细节：\n— 在其他设备或者 [Telegram Web](https://web.telegram.org/)私信[@tdlib_bot](https://t.me/tdlib_bot)。\n— 在 [GitHub page](https://github.com/tdlib/td/issues)公开分享。 **不要** 公开分享 **tdlib_log.txt** 文件。\n2. 耐心等待响应。\n3. 根据TDLib开发人员的要求更改以下日志设置。\n4. 点按 **启动 APP** 使 APP 再次强制停止。\n5. 向TDLib开发人员分享 **tdlib_log.txt** 文件，并等待问题解决。\n6. 更新后，你将能够正常启动应用。\n\n**替代选项**\n\n• 在[TDLib\'s GitHub page](https://github.com/tdlib/td/issues) 上查找类似的问题以获取可能的解决方案。\n• 重新安装 APP。私密聊天将丢失。如果您使用的是同一个电话号码，则会从 Telegram 云服务器中恢复所有其他对话和数据。</string>
 
   <string name="LaunchSubtitleFatalError">未知错误</string>
   <string name="LaunchAppGuideFatalError">Telegram X 在您上次使用时意外关闭。\n\n按下**启动应用程序**再试一次。</string>
@@ -5261,7 +5261,7 @@
   <string name="PremiumRequiredVoiceVideo">此设置需要 **Telegram 高级版** 订阅。</string>
   <string name="PremiumRequiredNewChats">此设置需要订阅 **Telegram 高级版**。</string>
   <string name="PremiumRequired">此功能需订阅 **Telegram 高级版**。</string>
-  <string name="PremiumRequiredMoveFolder">订阅 **Telegram 高级版** 以移动 \\"%1$s\\" 文件夹。</string>
+  <string name="PremiumRequiredMoveFolder">订阅 **Telegram 高级版** 以移动 \"%1$s\" 文件夹。</string>
 
   <string name="LimitCreateFolder_one">You have reached the limit of **%1$s** folder.</string>
   <string name="LimitCreateFolder_other">您已达到 **%1$s** 个文件夹的上线。</string>

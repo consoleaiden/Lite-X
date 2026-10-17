@@ -31,6 +31,7 @@ import org.thunderdog.challegram.component.chat.MessageView;
 import org.thunderdog.challegram.component.chat.MessagesManager;
 import org.thunderdog.challegram.config.Config;
 import org.thunderdog.challegram.core.Lang;
+import org.thunderdog.challegram.unsorted.ContentFilter;
 import org.thunderdog.challegram.loader.ComplexReceiver;
 import org.thunderdog.challegram.mediaview.MediaViewController;
 import org.thunderdog.challegram.mediaview.MediaViewThumbLocation;
@@ -337,6 +338,20 @@ public class TGMessageMedia extends TGMessage {
     }
   }
 
+  @Override
+  public boolean isContentFiltered () {
+    return caption != null && ContentFilter.shouldCollapse(caption.text);
+  }
+
+  @Override
+  public boolean expandContentFilter () {
+    if (!super.expandContentFilter())
+      return false;
+    if (caption != null)
+      setCaption(caption, captionMessageId, true);
+    return true;
+  }
+
   private boolean setCaption (TdApi.FormattedText caption, long messageId, boolean force) {
     this.captionMessageId = messageId;
     if (!Td.equalsTo(this.caption, caption) || force) {
@@ -346,15 +361,21 @@ public class TGMessageMedia extends TGMessage {
       }
       if (!Td.isEmpty(caption)) {
         TdApi.FormattedText fText = translatedText != null ? translatedText : caption;
-        this.wrapper = new TextWrapper(fText.text, getTextStyleProvider(), getTextColorSet())
-          .setEntities(TextEntity.valueOf(tdlib, fText, openParameters()), (wrapper, text, specificMedia) -> {
-            if (this.wrapper == wrapper) {
-              invalidateTextMediaReceiver(text, specificMedia);
-            }
-          })
-          .setHighlightText(getHighlightedText(Highlight.Pool.KEY_MEDIA_CAPTION, fText.text))
-          .addTextFlags(Text.FLAG_BIG_EMOJI)
-          .setClickCallback(clickCallback());
+        if (isContentFiltered() && !isContentFilterExpanded()) {
+          // Collapsed by the content filter: show a placeholder instead of the caption
+          this.wrapper = new TextWrapper(Lang.getString(R.string.ContentFilteredCollapsed), getTextStyleProvider(), getTextColorSet())
+            .setClickCallback(clickCallback());
+        } else {
+          this.wrapper = new TextWrapper(fText.text, getTextStyleProvider(), getTextColorSet())
+            .setEntities(TextEntity.valueOf(tdlib, fText, openParameters()), (wrapper, text, specificMedia) -> {
+              if (this.wrapper == wrapper) {
+                invalidateTextMediaReceiver(text, specificMedia);
+              }
+            })
+            .setHighlightText(getHighlightedText(Highlight.Pool.KEY_MEDIA_CAPTION, fText.text))
+            .addTextFlags(Text.FLAG_BIG_EMOJI)
+            .setClickCallback(clickCallback());
+        }
         this.wrapper.setViewProvider(currentViews);
         if (Config.USE_NONSTRICT_TEXT_ALWAYS || !useBubbles()) {
           this.wrapper.addTextFlags(Text.FLAG_BOUNDS_NOT_STRICT);

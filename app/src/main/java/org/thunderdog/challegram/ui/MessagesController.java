@@ -218,6 +218,7 @@ import org.thunderdog.challegram.tool.Strings;
 import org.thunderdog.challegram.tool.UI;
 import org.thunderdog.challegram.tool.Views;
 import org.thunderdog.challegram.ui.camera.CameraAccessImageView;
+import org.thunderdog.challegram.unsorted.ContentFilter;
 import org.thunderdog.challegram.unsorted.Settings;
 import org.thunderdog.challegram.unsorted.Test;
 import org.thunderdog.challegram.util.CancellableResultHandler;
@@ -3027,6 +3028,9 @@ public class MessagesController extends ViewController<MessagesController.Argume
 
   @Override
   protected void onFocusStateChanged () {
+    if (isFocused()) {
+      checkContentFilterChanges();
+    }
     checkRoundVideo();
     checkInlineResults();
     checkBroadcastingSomeAction();
@@ -4255,11 +4259,28 @@ public class MessagesController extends ViewController<MessagesController.Argume
   @Override
   public void onActivityResume () {
     super.onActivityResume();
+    checkContentFilterChanges();
     checkBroadcastingSomeAction();
     registerRaiseListener();
     manager.setParentPaused(false);
     if (enableOnResume) {
       UI.unlock(this, 200l);
+    }
+  }
+
+  // == Content filter ==
+
+  private int contentFilterVersion = ContentFilter.version();
+
+  /**
+   * The filter can be reconfigured from its settings screen; when that happens
+   * the messages have to be rebuilt so hidden / collapsed messages reflect it.
+   */
+  private void checkContentFilterChanges () {
+    int version = ContentFilter.version();
+    if (contentFilterVersion != version) {
+      contentFilterVersion = version;
+      reloadData();
     }
   }
 

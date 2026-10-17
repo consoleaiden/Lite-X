@@ -101,6 +101,7 @@ import org.thunderdog.challegram.tool.Screen;
 import org.thunderdog.challegram.tool.Strings;
 import org.thunderdog.challegram.tool.UI;
 import org.thunderdog.challegram.tool.Views;
+import org.thunderdog.challegram.unsorted.ContentFilter;
 import org.thunderdog.challegram.unsorted.Settings;
 import org.thunderdog.challegram.unsorted.Test;
 import org.thunderdog.challegram.util.Poller;
@@ -764,6 +765,7 @@ public class ChatsController extends TelegramViewController<ChatsController.Argu
   protected void onFocusStateChanged () {
     super.onFocusStateChanged();
     if (isFocused()) {
+      checkContentFilterChanges();
       int chatFolderId = chatFolderId();
       if (chatFolderId != NO_CHAT_FOLDER_ID && tdlib.isFolderShareable(chatFolderId) && !isFiltered()) {
         startChatFolderNewChatsPolling(chatFolderId);
@@ -2361,8 +2363,25 @@ public class ChatsController extends TelegramViewController<ChatsController.Argu
   @Override
   public void onActivityResume () {
     super.onActivityResume();
+    checkContentFilterChanges();
     if (spinnerView != null) {
       spinnerView.attach();
+    }
+  }
+
+  // == Content filter ==
+
+  private int contentFilterVersion = ContentFilter.version();
+
+  /** Rebuilds chat list previews when the content filter has been reconfigured. */
+  private void checkContentFilterChanges () {
+    int version = ContentFilter.version();
+    if (contentFilterVersion != version) {
+      contentFilterVersion = version;
+      if (adapter != null) {
+        adapter.updateLocale(true);
+        adapter.notifyAllChanged();
+      }
     }
   }
 
