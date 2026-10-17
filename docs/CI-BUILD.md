@@ -24,12 +24,27 @@
 Actions → **Build APK** → *Run workflow*，可选：
 
 - `build_type`：`Debug`（默认，最稳） / `Release`
-- `flavor`：`latest`(minSdk 33，默认) / `qrs` / `tens` / `marshmallow` / `lollipop` / `legacy`
-- `abi`：`arm64`（默认，单 ABI，体积与耗时最优） / `universal` / `arm32` / `x64` / `x86`
+- `flavor`：`qrs`（默认，minSdk 29） / `latest` / `tens` / `marshmallow` / `lollipop` / `legacy`
+- `abi`：`both`（默认，并行出 `arm64-v8a` + `armeabi-v7a` 两个包） / `arm64` / `arm32` / `universal` / `x64` / `x86`
 - `free_disk_space`：默认开，删掉镜像预装的 dotnet/Android SDK/Haskell 等，多腾出约 8–10 GB
 - `save_generated_keystore`：导出临时 keystore（公开仓库慎开）
 
-结束后在 Artifacts 里下载 `tgx-<flavor>-<abi>-<buildType>`，里面就是可直接安装的 `.apk`。
+`abi: both` 会**拆成两个并行 job**，各自上传一个 Artifact：
+`tgx-<flavor>-arm64-<buildType>`（64 位设备用这个）和 `tgx-<flavor>-arm32-<buildType>`（32 位设备用这个）。
+
+### flavor 与系统版本对照（来自 `buildSrc/.../Config.kt`）
+
+| flavor | minSdk | maxSdk | 适用 |
+| --- | --- | --- | --- |
+| `latest` | 33 | — | Android 13+ |
+| `qrs` | 29 | 32 | Android 10–12 |
+| `tens` | 24 | 28 | Android 7–9 |
+| `marshmallow` | 23 | 23 | Android 6 |
+| `lollipop` | 21 | 22 | Android 5 |
+| `legacy` | 16 | 20 | Android 4.x（用老 NDK） |
+
+> `maxSdk` 只在 **Release** 构建写入 manifest（见 `Extensions.kt` 的 `!isDebug` 判断），Debug 包不受上限约束。
+> 手机上用 `adb shell getprop ro.build.version.sdk` 查 API 级别，选 minSdk ≤ 该值的 flavor。
 
 ## 3. 工作流做了什么（以及为什么）
 
@@ -56,7 +71,10 @@ Actions → **Build APK** → *Run workflow*，可选：
 | `No space left on device` | 改单 ABI（`arm64`）、确认 `free_disk_space` 已开，或换更大 runner / 自建 runner |
 | `sdk.dir is not set` | `local.properties` 生成步骤失败 |
 | Release 构建卡在 `fetchLocalizedStrings` | 该任务会访问 translations.telegram.org 拉取全部语言；网络不通时改用 `Debug` |
+| 手机提示「解析包失败」 | 90% 是 APK 的 minSdk 高于手机系统版本（用 `adb install` 会明确报 `INSTALL_FAILED_OLDER_SDK: Requires newer sdk version #33`）。换一个 minSdk 更低的 flavor |
 | 构建超时 | 首次全量编译（含 WebRTC/FFmpeg/libvpx）通常 1–2 小时，上限已设为 360 分钟 |
+
+装之前可以先不用真机试：构建日志里的 **Inspect APK metadata** 步骤（以及 job summary）会用 `aapt2 dump badging` 打出 `sdkVersion:` 和 `native-code:`，直接对照手机的 API 级别与 CPU ABI 即可。
 
 ## 6. 耗时与体积提示
 

@@ -9,15 +9,15 @@ on:
         options: [Debug, Release]
         default: Debug
       flavor:
-        description: 'SDK flavor (minSdk: latest=33, qrs=29, tens=24, marshmallow=23, lollipop=21, legacy=16)'
+        description: 'SDK flavor (minSdk: latest=33/Android13, qrs=29/Android10, tens=24/Android7, marshmallow=23, lollipop=21, legacy=16)'
         type: choice
-        options: [latest, qrs, tens, marshmallow, lollipop, legacy]
-        default: latest
+        options: [qrs, latest, tens, marshmallow, lollipop, legacy]
+        default: qrs
       abi:
-        description: 'ABI flavor'
+        description: 'ABI flavor (both = arm64-v8a + armeabi-v7a, one APK each)'
         type: choice
-        options: [arm64, universal, arm32, x64, x86]
-        default: arm64
+        options: [both, arm64, arm32, universal, x64, x86]
+        default: both
       free_disk_space:
         description: 'Remove preinstalled toolchains before building (recommended)'
         type: boolean
@@ -39,16 +39,22 @@ permissions:
 
 env:
   ANDROID_SDK_ROOT: /home/runner/android-sdk
-  FLAVOR: ${{ inputs.flavor || 'latest' }}
-  ABI: ${{ inputs.abi || 'arm64' }}
+  FLAVOR: ${{ inputs.flavor || 'qrs' }}
   BUILD_TYPE: ${{ inputs.build_type || 'Debug' }}
   HAS_KEYSTORE_SECRET: ${{ secrets.KEYSTORE_BASE64 != '' }}
 
 jobs:
   build:
-    name: ${{ inputs.flavor || 'latest' }} / ${{ inputs.abi || 'arm64' }} / ${{ inputs.build_type || 'Debug' }}
+    name: ${{ inputs.flavor || 'qrs' }} / ${{ matrix.abi }} / ${{ inputs.build_type || 'Debug' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      # `both` fans out into two parallel jobs: arm64-v8a + armeabi-v7a
+      matrix:
+        abi: ${{ fromJSON(inputs.abi == 'both' && '["arm64","arm32"]' || format('["{0}"]', inputs.abi || 'arm64')) }}
+    env:
+      ABI: ${{ matrix.abi }}
 
     steps:
       - name: Free disk space
@@ -231,6 +237,26 @@ jobs:
           find app/build/outputs/apk -name '*.apk' -exec cp {} apk-out/ \;
           ls -lh apk-out
           cd apk-out && sha256sum *.apk | tee ../apk-out/SHA256.txt
+
+      - name: Inspect APK metadata
+        run: |
+          set -e
+          prop() { grep -m1 "^$1=" version.properties | cut -d= -f2- | tr -d '\r'; }
+          AAPT="$ANDROID_SDK_ROOT/build-tools/$(prop version.build_tools)/aapt2"
+          echo "## APK metadata" >> "$GITHUB_STEP_SUMMARY"
+          for apk in apk-out/*.apk; do
+            echo "::group::$(basename "$apk")"
+            "$AAPT" dump badging "$apk" > /tmp/badging.txt
+            grep -E "^package:|sdkVersion:|targetSdkVersion:|native-code:|application-label:" /tmp/badging.txt || true
+            echo "::endgroup::"
+            {
+              echo ""
+              echo "### $(basename "$apk")"
+              echo '```'
+              grep -E "^package:|sdkVersion:|targetSdkVersion:|native-code:|application-label:" /tmp/badging.txt || true
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
