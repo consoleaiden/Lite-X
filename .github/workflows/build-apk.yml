@@ -42,6 +42,7 @@ env:
   FLAVOR: ${{ inputs.flavor || 'latest' }}
   ABI: ${{ inputs.abi || 'arm64' }}
   BUILD_TYPE: ${{ inputs.build_type || 'Debug' }}
+  HAS_KEYSTORE_SECRET: ${{ secrets.KEYSTORE_BASE64 != '' }}
 
 jobs:
   build:
@@ -240,7 +241,8 @@ jobs:
           retention-days: 30
 
       - name: Upload generated keystore
-        if: ${{ inputs.save_generated_keystore == true && secrets.KEYSTORE_BASE64 == '' }}
+        # `secrets` is not available in `if:` expressions, only via env
+        if: ${{ inputs.save_generated_keystore == true && env.HAS_KEYSTORE_SECRET == 'false' }}
         uses: actions/upload-artifact@v4
         with:
           name: tgx-ci-keystore
