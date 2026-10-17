@@ -355,6 +355,10 @@ public class TGMessageMedia extends TGMessage {
   private boolean setCaption (TdApi.FormattedText caption, long messageId, boolean force) {
     this.captionMessageId = messageId;
     if (!Td.equalsTo(this.caption, caption) || force) {
+      TdApi.FormattedText adStripped = ContentFilter.stripBlockedAds(caption);
+      if (adStripped != null) {
+        caption = adStripped;
+      }
       this.caption = caption;
       if (this.wrapper != null) {
         this.wrapper.performDestroy();

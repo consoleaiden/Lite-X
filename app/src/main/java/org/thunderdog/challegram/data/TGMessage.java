@@ -107,6 +107,7 @@ import org.thunderdog.challegram.tool.Views;
 import org.thunderdog.challegram.ui.FeatureToggles;
 import org.thunderdog.challegram.ui.MessagesController;
 import org.thunderdog.challegram.ui.TranslationControllerV2;
+import org.thunderdog.challegram.unsorted.ContentFilter;
 import org.thunderdog.challegram.unsorted.Settings;
 import org.thunderdog.challegram.util.EmojiStatusHelper;
 import org.thunderdog.challegram.util.LanguageDetector;
@@ -3146,6 +3147,15 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
   private void buildMarkup () {
     TdApi.Message replyMarkupMessage = findReplyMarkupMessage();
     if (replyMarkupMessage != null && replyMarkupMessage.replyMarkup != null && replyMarkupMessage.replyMarkup.getConstructor() == TdApi.ReplyMarkupInlineKeyboard.CONSTRUCTOR) {
+      TdApi.ReplyMarkupInlineKeyboard markup = (TdApi.ReplyMarkupInlineKeyboard) replyMarkupMessage.replyMarkup;
+      markup = ContentFilter.filterKeyboard(markup);
+      if (markup == null) {
+        // Every button was blocked by the ad filter
+        if (inlineKeyboard != null) {
+          inlineKeyboard.clear();
+        }
+        return;
+      }
       if (inlineKeyboard == null) {
         inlineKeyboard = new TGInlineKeyboard(this, true);
         inlineKeyboard.setViewProvider(currentViews);
@@ -3153,9 +3163,9 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
       if (useBubbles() && useBubble()) {
         int width = getActualRightContentEdge() - getActualLeftContentEdge();
         int maxWidth = pRealContentMaxWidth + getBubblePaddingLeft() + getBubblePaddingRight();
-        inlineKeyboard.set(replyMarkupMessage.id, (TdApi.ReplyMarkupInlineKeyboard) replyMarkupMessage.replyMarkup, width, maxWidth);
+        inlineKeyboard.set(replyMarkupMessage.id, markup, width, maxWidth);
       } else {
-        inlineKeyboard.set(replyMarkupMessage.id, (TdApi.ReplyMarkupInlineKeyboard) replyMarkupMessage.replyMarkup, getContentWidth(), pRealContentMaxWidth);
+        inlineKeyboard.set(replyMarkupMessage.id, markup, getContentWidth(), pRealContentMaxWidth);
       }
     } else if (inlineKeyboard != null) {
       inlineKeyboard.clear();

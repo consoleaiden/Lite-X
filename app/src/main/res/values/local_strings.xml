@@ -32,4 +32,21 @@
   <string name="ContentFilterInvalidRegex">正则表达式无效</string>
   <string name="ContentFilteredCollapsed">内容已被过滤，点击查看</string>
   <string name="ContentFilteredPreview">消息已被过滤</string>
+
+  <string name="AdFilterSection">屏蔽广告</string>
+  <string name="AdFilterEnabled">屏蔽系统广告</string>
+  <string name="AdFilterEnabledInfo">开启后自动屏蔽：聊天列表中的代理赞助商广告、聊天中带\"广告 / Ad\"标识的推广消息，以及已手动屏蔽的链接。关闭后恢复显示。</string>
+  <string name="AdFilterBlockedUrls">已屏蔽的链接</string>
+  <string name="AdFilterNoUrls">还没有屏蔽任何链接。长按聊天中的广告链接，选择\"屏蔽广告\"即可添加。</string>
+  <string name="AdFilterBlockAction">屏蔽广告</string>
+  <string name="AdFilterBlockedToast">已屏蔽该链接的广告</string>
+  <string name="AdFilterAlreadyBlockedToast">该链接已在屏蔽列表中</string>
+  <string name="AdFilterRemoveUrl">取消屏蔽</string>
+  <string name="AdFilterRemoveConfirm">取消屏蔽后，该链接的广告将重新显示。</string>
+  <string name="AdFilterListNote">提示：聊天列表中的广告在重新进入聊天列表后生效。</string>
+
+  <string name="ProxyTestSpeed">测速</string>
+  <string name="ProxyTesting">正在测速，请稍候…</string>
+  <string name="ProxyTestResult">测速完成：%1$s ms</string>
+  <string name="ProxyTestFailed">测速失败：无法连接该代理</string>
 </resources>

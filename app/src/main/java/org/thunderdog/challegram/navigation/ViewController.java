@@ -47,6 +47,7 @@ import android.widget.Button;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.CallSuper;
 import androidx.annotation.DrawableRes;
@@ -2224,6 +2225,10 @@ public abstract class ViewController<T> implements Future<View>, ThemeChangeList
     strings.append(R.string.Share);
     icons.append(R.drawable.baseline_forward_24);
 
+    ids.append(R.id.btn_blockAd);
+    strings.append(R.string.AdFilterBlockAction);
+    icons.append(R.drawable.baseline_block_24);
+
     final int[] shareState = {0};
 
     showOptions(url, ids.get(), strings.get(), null, icons.get(), (itemView, id) -> {
@@ -2237,6 +2242,12 @@ public abstract class ViewController<T> implements Future<View>, ThemeChangeList
       } else if (id == R.id.btn_openLink) {
         if (openCallback == null || !openCallback.getBoolValue()) {
           tdlib.ui().openUrl(ViewController.this, url, options);
+        }
+      } else if (id == R.id.btn_blockAd) {
+        if (org.thunderdog.challegram.unsorted.ContentFilter.blockAdUrl(url)) {
+          UI.showToast(R.string.AdFilterBlockedToast, Toast.LENGTH_SHORT);
+        } else {
+          UI.showToast(R.string.AdFilterAlreadyBlockedToast, Toast.LENGTH_SHORT);
         }
       }
       return true;

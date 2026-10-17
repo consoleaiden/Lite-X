@@ -274,6 +274,10 @@ public class TGMessageText extends TGMessage {
   }
 
   private boolean setText (TdApi.FormattedText text, boolean parseEntities, boolean forceUpdate, boolean animated) {
+    TdApi.FormattedText adStripped = ContentFilter.stripBlockedAds(text);
+    if (adStripped != null) {
+      text = adStripped;
+    }
     if (this.text == null || !Td.equalsTo(this.text, text) || forceUpdate) {
       animated = animated && Config.ENABLE_TEXT_ANIMATIONS && needAnimateChanges();
 
@@ -400,6 +404,12 @@ public class TGMessageText extends TGMessage {
       }
       if (StringUtils.isEmpty(url)) {
         url = linkPreview.url;
+      }
+      if (ContentFilter.isAdUrlBlocked(url)) {
+        // Blocked by the ad filter: do not render the link preview
+        this.linkPreview = null;
+        this.linkPreviewAboveText.setValue(false, false);
+        return false;
       }
       this.linkPreview = new TGWebPage(this, linkPreview, url, linkPreviewOptions);
       this.linkPreview.setViewProvider(currentViews);

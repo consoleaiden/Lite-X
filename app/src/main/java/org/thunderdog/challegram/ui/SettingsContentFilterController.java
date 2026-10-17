@@ -50,6 +50,8 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
         @IdRes int id = item.getId();
         if (id == R.id.btn_contentFilterEnabled) {
           view.getToggler().setRadioEnabled(ContentFilter.isEnabled(), isUpdate);
+        } else if (id == R.id.btn_contentFilterBlockAds) {
+          view.getToggler().setRadioEnabled(ContentFilter.blockAds(), isUpdate);
         } else if (id == R.id.btn_contentFilterModeHide) {
           view.getToggler().setRadioEnabled(ContentFilter.getMode() == ContentFilter.MODE_HIDE, isUpdate);
         } else if (id == R.id.btn_contentFilterModeCollapse) {
@@ -64,6 +66,30 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
   private void buildCells () {
     List<ListItem> items = new ArrayList<>();
 
+    items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, R.string.AdFilterSection));
+    items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
+    items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_contentFilterBlockAds, 0, R.string.AdFilterEnabled));
+    items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
+    items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.AdFilterEnabledInfo));
+
+    List<String> adUrls = ContentFilter.getBlockedAdUrls();
+    if (adUrls.isEmpty()) {
+      items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
+      items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.AdFilterNoUrls));
+      items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
+    } else {
+      items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, R.string.AdFilterBlockedUrls));
+      items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
+      for (int i = 0; i < adUrls.size(); i++) {
+        items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_contentFilterRemoveAdUrl, 0, adUrls.get(i)));
+        if (i != adUrls.size() - 1) {
+          items.add(new ListItem(ListItem.TYPE_SEPARATOR));
+        }
+      }
+      items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
+    }
+
+    items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, R.string.ContentFilterTitle));
     items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
     items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_contentFilterEnabled, 0, R.string.ContentFilterEnabled));
     items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
@@ -114,6 +140,10 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
       ContentFilter.setEnabled(adapter.toggleView(v));
       adapter.updateValuedSettingById(R.id.btn_contentFilterModeHide);
       adapter.updateValuedSettingById(R.id.btn_contentFilterModeCollapse);
+    } else if (id == R.id.btn_contentFilterBlockAds) {
+      ContentFilter.setBlockAds(adapter.toggleView(v));
+    } else if (id == R.id.btn_contentFilterRemoveAdUrl) {
+      showRemoveAdUrlPicker();
     } else if (id == R.id.btn_contentFilterModeHide || id == R.id.btn_contentFilterModeCollapse) {
       ContentFilter.setMode(id == R.id.btn_contentFilterModeHide ? ContentFilter.MODE_HIDE : ContentFilter.MODE_COLLAPSE);
       adapter.updateValuedSettingById(R.id.btn_contentFilterModeHide);
@@ -123,6 +153,28 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
     } else if (id == R.id.btn_contentFilterRemoveRule) {
       showRemoveRulePicker();
     }
+  }
+
+  private void showRemoveAdUrlPicker () {
+    final List<String> urls = ContentFilter.getBlockedAdUrls();
+    if (urls.isEmpty()) {
+      return;
+    }
+    int[] ids = new int[urls.size()];
+    String[] titles = new String[urls.size()];
+    for (int i = 0; i < urls.size(); i++) {
+      ids[i] = i;
+      titles[i] = urls.get(i);
+    }
+    showOptions(Lang.getString(R.string.AdFilterRemoveUrl), ids, titles, (itemView, id) -> {
+      if (id >= 0 && id < urls.size()) {
+        openAlert(R.string.AdFilterRemoveUrl, urls.get(id) + "\n\n" + Lang.getString(R.string.AdFilterRemoveConfirm), (dialog, which) -> {
+          ContentFilter.unblockAdUrl(id);
+          buildCells();
+        });
+      }
+      return true;
+    });
   }
 
   private void showAddRuleTypePicker () {

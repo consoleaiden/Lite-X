@@ -2871,11 +2871,17 @@ public class TdlibUi extends Handler {
   }
 
   public void openUrlOptions (final ViewController<?> context, final String url, @Nullable UrlOpenParameters options) {
-    context.showOptions(url, new int[] {R.id.btn_open, R.id.btn_copyLink}, new String[] {Lang.getString(R.string.Open), Lang.getString(R.string.CopyLink)}, null, new int[] {R.drawable.baseline_open_in_browser_24, R.drawable.baseline_content_copy_24}, (v, optionId) -> {
+    context.showOptions(url, new int[] {R.id.btn_open, R.id.btn_copyLink, R.id.btn_blockAd}, new String[] {Lang.getString(R.string.Open), Lang.getString(R.string.CopyLink), Lang.getString(R.string.AdFilterBlockAction)}, null, new int[] {R.drawable.baseline_open_in_browser_24, R.drawable.baseline_content_copy_24, R.drawable.baseline_block_24}, (v, optionId) -> {
       if (optionId == R.id.btn_open) {
         openUrl(context, url, options);
       } else if (optionId == R.id.btn_copyLink) {
         UI.copyText(url, R.string.CopiedLink);
+      } else if (optionId == R.id.btn_blockAd) {
+        if (org.thunderdog.challegram.unsorted.ContentFilter.blockAdUrl(url)) {
+          UI.showToast(R.string.AdFilterBlockedToast, Toast.LENGTH_SHORT);
+        } else {
+          UI.showToast(R.string.AdFilterAlreadyBlockedToast, Toast.LENGTH_SHORT);
+        }
       }
       return true;
     });
@@ -4331,15 +4337,18 @@ public class TdlibUi extends Handler {
     c.showOptions(url, new int[] {
       R.id.btn_open,
       R.id.btn_copyLink,
-      R.id.btn_share
+      R.id.btn_share,
+      R.id.btn_blockAd
     }, new String[] {
       Lang.getString(R.string.Open),
       Lang.getString(R.string.Copy),
-      Lang.getString(R.string.Share)
+      Lang.getString(R.string.Share),
+      Lang.getString(R.string.AdFilterBlockAction)
     }, null, new int[] {
       R.drawable.baseline_open_in_browser_24,
       R.drawable.baseline_content_copy_24,
-      R.drawable.baseline_forward_24
+      R.drawable.baseline_forward_24,
+      R.drawable.baseline_block_24
     }, (optionItemView, id) -> {
       if (id == R.id.btn_open) {
         openUrl(context, url, openParametersFuture != null ? openParametersFuture.getValue() : null);
@@ -4347,6 +4356,12 @@ public class TdlibUi extends Handler {
         UI.copyText(url, R.string.CopiedLink);
       } else if (id == R.id.btn_share) {
         shareUrl(context, url);
+      } else if (id == R.id.btn_blockAd) {
+        if (org.thunderdog.challegram.unsorted.ContentFilter.blockAdUrl(url)) {
+          UI.showToast(R.string.AdFilterBlockedToast, Toast.LENGTH_SHORT);
+        } else {
+          UI.showToast(R.string.AdFilterAlreadyBlockedToast, Toast.LENGTH_SHORT);
+        }
       }
       return true;
     });
@@ -4373,15 +4388,20 @@ public class TdlibUi extends Handler {
       msg.append("\n\n");
       msg.append(Lang.getString(R.string.EnableProxyAlertHintMtproto));
     }
-    IntList ids = new IntList(3);
-    StringList strings = new StringList(3);
-    IntList icons = new IntList(3);
-    IntList colors = new IntList(3);
+    IntList ids = new IntList(4);
+    StringList strings = new StringList(4);
+    IntList icons = new IntList(4);
+    IntList colors = new IntList(4);
 
     ids.append(R.id.btn_addProxy);
     strings.append(R.string.ProxyEnable);
     icons.append(R.drawable.baseline_security_24);
     colors.append(ViewController.OptionColor.BLUE);
+
+    ids.append(R.id.btn_proxyTest);
+    strings.append(R.string.ProxyTestSpeed);
+    icons.append(R.drawable.baseline_signal_speed_24);
+    colors.append(ViewController.OptionColor.NORMAL);
 
     ids.append(R.id.btn_save);
     strings.append(R.string.ProxySaveForLater);
@@ -4398,8 +4418,36 @@ public class TdlibUi extends Handler {
         Settings.instance().addOrUpdateProxy(proxy, null, true);
       } else if (id == R.id.btn_save) {
         Settings.instance().addOrUpdateProxy(proxy, null, false);
+      } else if (id == R.id.btn_proxyTest) {
+        testProxySpeed(context, proxy);
       }
       return true;
+    });
+  }
+
+  /**
+   * Measures round-trip time to a proxy without enabling or saving it:
+   * registers a disabled proxy with TDLib, then pings it.
+   */
+  private static void testProxySpeed (TdlibDelegate context, @NonNull TdApi.Proxy proxy) {
+    final Tdlib tdlib = context.tdlib();
+    UI.showToast(R.string.ProxyTesting, Toast.LENGTH_SHORT);
+    tdlib.send(new TdApi.AddProxy(proxy, false, ""), (added, addError) -> {
+      if (!(added instanceof TdApi.AddedProxy)) {
+        UI.post(() -> UI.showToast(R.string.ProxyTestFailed, Toast.LENGTH_SHORT));
+        return;
+      }
+      tdlib.send(new TdApi.PingProxy(((TdApi.AddedProxy) added).proxy), (result, pingError) -> {
+        boolean ok = result instanceof TdApi.Seconds;
+        long pingMs = ok ? Math.round(((TdApi.Seconds) result).seconds * 1000.0) : -1;
+        UI.post(() -> {
+          if (ok) {
+            UI.showToast(Lang.getString(R.string.ProxyTestResult, pingMs >= 0 ? Long.toString(pingMs) : "?"), Toast.LENGTH_SHORT);
+          } else {
+            UI.showToast(R.string.ProxyTestFailed, Toast.LENGTH_SHORT);
+          }
+        });
+      });
     });
   }
 
