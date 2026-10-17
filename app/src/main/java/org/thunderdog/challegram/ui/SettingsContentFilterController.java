@@ -112,7 +112,7 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
     } else {
       items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
       for (int i = 0; i < rules.size(); i++) {
-        items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_contentFilterRemoveRule, 0, ruleTitle(rules.get(i))));
+        items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_contentFilterEditRule, 0, ruleTitle(rules.get(i))).setData(i));
         if (i != rules.size() - 1) {
           items.add(new ListItem(ListItem.TYPE_SEPARATOR));
         }
@@ -150,9 +150,68 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
       adapter.updateValuedSettingById(R.id.btn_contentFilterModeCollapse);
     } else if (id == R.id.btn_contentFilterAddRule) {
       showAddRuleTypePicker();
-    } else if (id == R.id.btn_contentFilterRemoveRule) {
-      showRemoveRulePicker();
+    } else if (id == R.id.btn_contentFilterEditRule) {
+      Object data = ((ListItem) v.getTag()).getData();
+      if (data instanceof Integer) {
+        showRuleMenu((Integer) data);
+      }
     }
+  }
+
+  private void showRuleMenu (final int index) {
+    List<ContentFilter.Rule> rules = ContentFilter.getRules();
+    if (index < 0 || index >= rules.size()) {
+      return;
+    }
+    showOptions(ruleTitle(rules.get(index)), new int[] {R.id.btn_contentFilterEditRule, R.id.btn_contentFilterRemoveRule}, new String[] {
+      Lang.getString(R.string.ContentFilterEditRule),
+      Lang.getString(R.string.ContentFilterRemoveRule)
+    }, null, new int[] {R.drawable.baseline_edit_24, R.drawable.baseline_delete_24}, (itemView, optionId) -> {
+      if (optionId == R.id.btn_contentFilterEditRule) {
+        showEditRuleInput(index);
+      } else if (optionId == R.id.btn_contentFilterRemoveRule) {
+        confirmRemoveRule(index);
+      }
+      return true;
+    });
+  }
+
+  private void showEditRuleInput (final int index) {
+    List<ContentFilter.Rule> rules = ContentFilter.getRules();
+    if (index < 0 || index >= rules.size()) {
+      return;
+    }
+    final ContentFilter.Rule rule = rules.get(index);
+    final EditText input = new EditText(context);
+    input.setSingleLine(true);
+    input.setText(rule.pattern);
+    input.setSelection(input.getText() != null ? input.getText().length() : 0);
+    input.setHint(Lang.getString(R.string.ContentFilterPatternHint));
+
+    LinearLayout container = new LinearLayout(context);
+    int padding = Screen.dp(20f);
+    container.setPadding(padding, padding / 2, padding, 0);
+    container.addView(input);
+
+    AlertDialog.Builder b = new AlertDialog.Builder(context, Theme.dialogTheme());
+    b.setTitle(Lang.getString(rule.isRegex() ? R.string.ContentFilterTypeRegex : R.string.ContentFilterTypeKeyword));
+    b.setView(container);
+    b.setPositiveButton(Lang.getString(R.string.Done), (dialog, which) -> {
+      String text = input.getText() != null ? input.getText().toString().trim() : "";
+      if (!text.isEmpty() && !text.equals(rule.pattern)) {
+        ContentFilter.updateRule(index, text);
+        buildCells();
+        if (rule.isRegex()) {
+          List<ContentFilter.Rule> updated = ContentFilter.getRules();
+          ContentFilter.Rule changed = index < updated.size() ? updated.get(index) : null;
+          if (changed != null && changed.isBroken()) {
+            UI.showToast(R.string.ContentFilterInvalidRegex, Toast.LENGTH_SHORT);
+          }
+        }
+      }
+    });
+    b.setNegativeButton(Lang.getString(R.string.Cancel), (dialog, which) -> dialog.dismiss());
+    showAlert(b);
   }
 
   private void showRemoveAdUrlPicker () {
@@ -216,23 +275,6 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
     });
     b.setNegativeButton(Lang.getString(R.string.Cancel), (dialog, which) -> dialog.dismiss());
     showAlert(b);
-  }
-
-  private void showRemoveRulePicker () {
-    final List<ContentFilter.Rule> rules = ContentFilter.getRules();
-    if (rules.isEmpty()) {
-      return;
-    }
-    int[] ids = new int[rules.size()];
-    String[] titles = new String[rules.size()];
-    for (int i = 0; i < rules.size(); i++) {
-      ids[i] = i;
-      titles[i] = ruleTitle(rules.get(i));
-    }
-    showOptions(Lang.getString(R.string.ContentFilterRemoveRule), ids, titles, (itemView, id) -> {
-      confirmRemoveRule(id);
-      return true;
-    });
   }
 
   private void confirmRemoveRule (final int index) {

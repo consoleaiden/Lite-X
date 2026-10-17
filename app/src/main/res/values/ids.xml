@@ -1442,6 +1442,7 @@
   <item type="id" name="btn_contentFilterModeCollapse" />
   <item type="id" name="btn_contentFilterAddRule" />
   <item type="id" name="btn_contentFilterRemoveRule" />
+  <item type="id" name="btn_contentFilterEditRule" />
   <item type="id" name="btn_contentFilterBlockAds" />
   <item type="id" name="btn_contentFilterRemoveAdUrl" />
   <item type="id" name="btn_blockAd" />

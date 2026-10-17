@@ -114,6 +114,20 @@ public class ContentFilter {
     setRules(list);
   }
 
+  /**
+   * Replaces the pattern of an existing rule, keeping its type.
+   */
+  public static void updateRule (int index, @NonNull String newPattern) {
+    List<Rule> list = new ArrayList<>(getRules());
+    if (index < 0 || index >= list.size())
+      return;
+    if (newPattern.trim().isEmpty())
+      return;
+    Rule old = list.get(index);
+    list.set(index, new Rule(old.type, newPattern));
+    setRules(list);
+  }
+
   public static void removeRuleAt (int index) {
     List<Rule> list = new ArrayList<>(getRules());
     if (index < 0 || index >= list.size())

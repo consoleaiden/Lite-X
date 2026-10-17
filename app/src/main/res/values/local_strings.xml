@@ -25,6 +25,7 @@
   <string name="ContentFilterNoRules">还没有添加任何规则。</string>
   <string name="ContentFilterAddRule">添加规则</string>
   <string name="ContentFilterRemoveRule">删除规则</string>
+  <string name="ContentFilterEditRule">编辑规则</string>
   <string name="ContentFilterRemoveConfirm">确定删除这条过滤规则？</string>
   <string name="ContentFilterTypeKeyword">关键词</string>
   <string name="ContentFilterTypeRegex">正则表达式</string>

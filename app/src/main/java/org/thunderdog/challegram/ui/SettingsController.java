@@ -653,14 +653,6 @@ public class SettingsController extends ViewController<Void> implements
     items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
 
     items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
-    items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_help, R.drawable.baseline_live_help_24, R.string.AskAQuestion));
-    items.add(new ListItem(ListItem.TYPE_SEPARATOR));
-    items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_faq, R.drawable.baseline_help_24, R.string.TelegramFAQ));
-    items.add(new ListItem(ListItem.TYPE_SEPARATOR));
-    items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_privacyPolicy, R.drawable.baseline_policy_24, R.string.PrivacyPolicy));
-    items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
-
-    items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
     AppInstallationUtil.DownloadUrl downloadUrl = AppUpdater.getDownloadUrl(null);
     @DrawableRes int downloadIconRes;
     @StringRes int downloadStringRes = R.string.CheckForUpdates;
