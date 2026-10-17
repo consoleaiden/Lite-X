@@ -67,3 +67,36 @@ Telegram X 的界面文案**不在** `res/` 里，而是运行时从 TDLib 语�
 - 「帮助」（`btn_help`）
 
 > 设置页里的「提问」（`AskAQuestion`）保留，因为需求只针对抽屉菜单。
+
+## 4. 应用名称与图标
+
+- 名称由 `local.properties` 的 `app.name` 决定（→ `resValue AppName` / `BuildConfig.PROJECT_NAME`），CI 里来自仓库变量 `APP_NAME`（当前：**Lite X**），工作流兜底值同样是 `Lite X`。改名称只需改这个变量。
+- 图标：`app/src/main/res/mipmap-*/app_launcher.png`（方形）、`app_launcher_round.png`（圆形）、`app_notification.png`（通知栏，Android 只取 alpha，所以只画白色心形）、`logo_middle.png`。
+  源文件 `_tools/icon_lite_x.svg`（仓库外），用 `_tools/gen_icons.js` 一次性导出全部密度：
+  ```bash
+  NODE_PATH=<node workspace>/node_modules node _tools/gen_icons.js <repo root>
+  ```
+  圆形 logo 在画布中占 86%（方形）/ 92%（圆形变体），四周留白，避免被各家的自适应图标蒙版裁掉。
+
+## 5. 基于 GitHub Releases 的应用内更新
+
+原来的「检查更新」走 Google Play / Telegram 频道，这里改成读**本仓库的 GitHub Releases**。
+
+- 版本判定：Release 的 tag 形如 `v<versionCode>-<CI build number>`（例：`v1818000-42`）。
+  `versionCode` 大于当前包，或相同但 build number 大于 `BuildConfig.CI_BUILD_NUMBER` 即认为有新版本。
+  `CI_BUILD_NUMBER` 由 CI 通过 `-PciBuildNumber=$GITHUB_RUN_NUMBER` 注入，本地构建为 0。
+- 接口：`https://api.github.com/repos/<owner>/<repo>/releases/latest`，由 `BuildConfig.SOURCES_URL`（`app.sources_url`）推导。
+- 资源挑选：按 `Build.SUPPORTED_ABIS` 优先匹配 `arm64-v8a`，其次 `armeabi-v7a`。
+- 点击「检查更新」（`SettingsController#btn_checkUpdates`）→ 后台线程请求 → 有新版本弹窗（下载更新 / 查看更新日志 / 取消），没有则 Toast「当前已是最新版本」，失败 Toast「检查更新失败」。
+  「下载更新」是打开浏览器下载 Release 里的 APK，装包仍由系统完成（未内置静默安装）。
+- 自动检查（冷启动 `BaseActivity`）同样走这条链路，受「自动更新」设置（`Settings.AUTO_UPDATE_MODE_*`）控制。
+
+| 文件 | 改动 |
+| --- | --- |
+| `util/AppUpdater.java` | 新增 `FlowType.GITHUB_RELEASE`、`checkForGitHubUpdates()` / `offerGitHubUpdate()`、Release JSON 解析 |
+| `ui/SettingsController.java` | 「检查更新」改为触发 GitHub 检查，图标换成 GitHub |
+| `app/build.gradle.kts` | `buildConfigInt("CI_BUILD_NUMBER", …)` |
+| `.github/workflows/build-apk.yml` | 新增 `release` job（下载两个 ABI 产物 → 生成 SHA256 → `softprops/action-gh-release` 发布） |
+| `res/values/local_strings.xml` | `AppUpdateGithubPrompt` / `UpdateChangelog` / `UpdateCheckNoUpdates` / `UpdateCheckFailed` |
+
+> 注意：工作流的 **tag 推送触发条件已改为 `build-*`**，因为发布用的 tag 是 `v<versionCode>-<runNumber>`，若继续匹配 `v*` 会出现「发布 → 触发构建 → 再发布」的死循环。
