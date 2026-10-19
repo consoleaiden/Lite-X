@@ -60,7 +60,6 @@ public class CloneChannelController extends RecyclerViewController<CloneChannelC
   private final List<TdApi.Chat> targets = new ArrayList<>();
   private long sourceChatId;
   private boolean loading = true;
-  private int loadIndex;
 
   @Override
   protected void onCreateView (Context context, CustomRecyclerView recyclerView) {
@@ -107,51 +106,112 @@ public class CloneChannelController extends RecyclerViewController<CloneChannelC
 
   private void loadChannels () {
     loading = true;
+    targets.clear();
     buildCells();
 
-    final int limit = LOAD_LIMITS[loadIndex];
-    tdlib.send(new TdApi.GetChats(new TdApi.ChatListMain(), limit), (chats, error) -> {
+    List<Long> chatIds = new ArrayList<>();
+    loadChatList(new TdApi.ChatListMain(), chatIds, 0, () ->
       UI.post(() -> {
         if (isDestroyed()) {
           return;
         }
-        if (error != null) {
-          if (loadIndex < LOAD_LIMITS.length - 1) {
-            loadIndex++;
-            loadChannels();
-          } else {
-            loading = false;
-            buildCells();
-          }
-          return;
-        }
-        boolean mayBeMore = chats != null && chats.chatIds != null && chats.chatIds.length >= limit;
-        if (mayBeMore && loadIndex < LOAD_LIMITS.length - 1) {
-          loadIndex++;
-          loadChannels();
-          return;
-        }
-        targets.clear();
-        if (chats != null && chats.chatIds != null) {
-          for (long chatId : chats.chatIds) {
-            TdApi.Chat chat = tdlib.chat(chatId);
-            if (isEligibleTarget(chat)) {
-              targets.add(chat);
+        loadChatList(new TdApi.ChatListArchive(), chatIds, 0, () ->
+          UI.post(() -> {
+            if (isDestroyed()) {
+              return;
             }
+            processCollectedChats(chatIds);
+          }));
+      }));
+  }
+
+  private void loadChatList (TdApi.ChatList list, List<Long> out, int limitIndex, Runnable after) {
+    if (isDestroyed() || limitIndex >= LOAD_LIMITS.length) {
+      after.run();
+      return;
+    }
+    final int limit = LOAD_LIMITS[limitIndex];
+    tdlib.send(new TdApi.GetChats(list, limit), (chats, error) -> {
+      UI.post(() -> {
+        if (isDestroyed()) {
+          return;
+        }
+        if (error != null || chats == null || chats.chatIds == null) {
+          after.run();
+          return;
+        }
+        int fetched = 0;
+        for (long chatId : chats.chatIds) {
+          if (chatId != 0 && !out.contains(chatId)) {
+            out.add(chatId);
+            fetched++;
           }
         }
-        loading = false;
-        buildCells();
+        if (fetched >= limit && limitIndex < LOAD_LIMITS.length - 1) {
+          loadChatList(list, out, limitIndex + 1, after);
+        } else {
+          after.run();
+        }
       });
     });
   }
 
-  private static boolean isEligibleTarget (@Nullable TdApi.Chat chat) {
+  private void processCollectedChats (List<Long> chatIds) {
+    processNextChat(chatIds, 0);
+  }
+
+  private void processNextChat (List<Long> chatIds, int index) {
+    if (isDestroyed()) {
+      return;
+    }
+    if (index >= chatIds.size()) {
+      loading = false;
+      buildCells();
+      return;
+    }
+    long chatId = chatIds.get(index);
+    TdApi.Chat chat = tdlib.chat(chatId);
+    if (chat != null) {
+      if (isEligibleTarget(chat)) {
+        targets.add(chat);
+      }
+      processNextChat(chatIds, index + 1);
+      return;
+    }
+    tdlib.send(new TdApi.GetChat(chatId), (loaded, error) -> {
+      UI.post(() -> {
+        if (isDestroyed()) {
+          return;
+        }
+        if (loaded != null && isEligibleTarget(loaded)) {
+          targets.add(loaded);
+        }
+        processNextChat(chatIds, index + 1);
+      });
+    });
+  }
+
+  private boolean isEligibleTarget (TdApi.Chat chat) {
     if (chat == null || !(chat.type instanceof TdApi.ChatTypeSupergroup)) {
       return false;
     }
     if (!((TdApi.ChatTypeSupergroup) chat.type).isChannel) {
       return false;
+    }
+    // chat.permissions describes what NON-ADMIN members may do (always false for
+    // broadcast channels), so instead check the current user's own member status.
+    TdApi.ChatMemberStatus status = tdlib.chatStatus(chat.id);
+    if (status != null) {
+      switch (status.getConstructor()) {
+        case TdApi.ChatMemberStatusCreator.CONSTRUCTOR:
+          return true;
+        case TdApi.ChatMemberStatusAdministrator.CONSTRUCTOR: {
+          TdApi.ChatAdministratorRights rights = ((TdApi.ChatMemberStatusAdministrator) status).rights;
+          return rights != null && rights.canPostMessages;
+        }
+        default:
+          return false;
+      }
     }
     return chat.permissions != null && chat.permissions.canSendBasicMessages;
   }
@@ -162,7 +222,6 @@ public class CloneChannelController extends RecyclerViewController<CloneChannelC
     if (id == R.id.btn_cloneNewChannel) {
       openCreateChannel();
     } else if (id == R.id.btn_cloneTargetRetry) {
-      loadIndex = 0;
       loadChannels();
     } else if (id == R.id.btn_cloneTarget) {
       Object data = ((ListItem) v.getTag()).getData();

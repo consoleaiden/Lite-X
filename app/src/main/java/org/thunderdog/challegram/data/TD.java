@@ -77,6 +77,7 @@ import org.thunderdog.challegram.loader.gif.GifFile;
 import org.thunderdog.challegram.navigation.ViewController;
 import org.thunderdog.challegram.telegram.PrivacySettings;
 import org.thunderdog.challegram.telegram.RightId;
+import org.thunderdog.challegram.telegram.ContentCopySender;
 import org.thunderdog.challegram.telegram.Tdlib;
 import org.thunderdog.challegram.telegram.TdlibAccentColor;
 import org.thunderdog.challegram.telegram.TdlibDelegate;
@@ -1846,58 +1847,83 @@ public class TD {
   private static void addForwardOrCopy (@Nullable Tdlib tdlib, long toChatId, @Nullable TdApi.MessageTopic toMessageTopicId, TdApi.Message[] messages, int index, int size, boolean sendCopy, boolean removeCaption, TdApi.MessageSendOptions options, ArrayList<TdApi.Function<?>> out) {
     long fromChatId = messages[index].chatId;
     if (isForwardingRestricted(tdlib, fromChatId)) {
-      buildCopyFunctions(toChatId, toMessageTopicId, messages, index, size, removeCaption, options, out);
+      // The server rejects both messages.forwardMessages and re-sending media that
+      // references a protected chat. The only working way is to download the media
+      // and upload it back as brand new files, which ContentCopySender does.
+      TdApi.Message[] run = new TdApi.Message[size];
+      System.arraycopy(messages, index, run, 0, size);
+      ContentCopySender.send(tdlib, toChatId, toMessageTopicId, run, removeCaption, options, (sent, error) -> {
+        if (error != null) {
+          UI.showError(error);
+        }
+      });
     } else {
       out.add(new TdApi.ForwardMessages(toChatId, toMessageTopicId, fromChatId, getMessageIds(messages, index, size), options, sendCopy, removeCaption));
     }
   }
 
   /**
-   * Re-creates messages as brand new ones. Media files are referenced by their remote ids,
-   * so nothing is downloaded / re-uploaded. Used to bypass the noforwards restriction.
-   *
-   * @return amount of messages that were successfully converted
+   * Returns the main media file of the content that needs to be downloaded before
+   * the content can be re-published (null for text-like contents).
    */
-  public static int buildCopyFunctions (long toChatId, @Nullable TdApi.MessageTopic toMessageTopicId, TdApi.Message[] messages, int from, int count, boolean removeCaption, TdApi.MessageSendOptions options, ArrayList<TdApi.Function<?>> out) {
-    int added = 0;
-    int end = from + count;
-    int i = from;
-    while (i < end) {
-      TdApi.Message message = messages[i];
-      long albumId = message.mediaAlbumId;
-      if (albumId != 0) {
-        int j = i;
-        ArrayList<TdApi.InputMessageContent> contents = new ArrayList<>();
-        while (j < end && messages[j].chatId == message.chatId && messages[j].mediaAlbumId == albumId) {
-          TdApi.InputMessageContent content = toInputMessageContent(messages[j].content, removeCaption);
-          if (content != null) {
-            contents.add(content);
-          }
-          j++;
-        }
-        if (contents.size() == 1) {
-          out.add(new TdApi.SendMessage(toChatId, toMessageTopicId, null, options, null, contents.get(0)));
-        } else if (contents.size() > 1) {
-          out.add(new TdApi.SendMessageAlbum(toChatId, toMessageTopicId, null, options, contents.toArray(new TdApi.InputMessageContent[0])));
-        }
-        added += contents.size();
-        i = j;
-      } else {
-        TdApi.InputMessageContent content = toInputMessageContent(message.content, removeCaption);
-        if (content != null) {
-          out.add(new TdApi.SendMessage(toChatId, toMessageTopicId, null, options, null, content));
-          added++;
-        }
-        i++;
-      }
+  public static @Nullable TdApi.File getCopySourceFile (@Nullable TdApi.MessageContent content) {
+    if (content == null) {
+      return null;
     }
-    return added;
+    switch (content.getConstructor()) {
+      case TdApi.MessagePhoto.CONSTRUCTOR: {
+        TdApi.MessagePhoto photo = (TdApi.MessagePhoto) content;
+        if (photo.video != null && photo.video.video != null) {
+          return photo.video.video;
+        }
+        TdApi.PhotoSize size = biggestPhotoSize(photo.photo);
+        return size != null ? size.photo : null;
+      }
+      case TdApi.MessageVideo.CONSTRUCTOR: {
+        TdApi.MessageVideo video = (TdApi.MessageVideo) content;
+        return video.video != null ? video.video.video : null;
+      }
+      case TdApi.MessageDocument.CONSTRUCTOR: {
+        TdApi.MessageDocument document = (TdApi.MessageDocument) content;
+        return document.document != null ? document.document.document : null;
+      }
+      case TdApi.MessageAnimation.CONSTRUCTOR: {
+        TdApi.MessageAnimation animation = (TdApi.MessageAnimation) content;
+        return animation.animation != null ? animation.animation.animation : null;
+      }
+      case TdApi.MessageAudio.CONSTRUCTOR: {
+        TdApi.MessageAudio audio = (TdApi.MessageAudio) content;
+        return audio.audio != null ? audio.audio.audio : null;
+      }
+      case TdApi.MessageSticker.CONSTRUCTOR: {
+        TdApi.MessageSticker sticker = (TdApi.MessageSticker) content;
+        return sticker.sticker != null ? sticker.sticker.sticker : null;
+      }
+      case TdApi.MessageVoiceNote.CONSTRUCTOR: {
+        TdApi.MessageVoiceNote voiceNote = (TdApi.MessageVoiceNote) content;
+        return voiceNote.voiceNote != null ? voiceNote.voiceNote.voice : null;
+      }
+      case TdApi.MessageVideoNote.CONSTRUCTOR: {
+        TdApi.MessageVideoNote videoNote = (TdApi.MessageVideoNote) content;
+        return videoNote.videoNote != null ? videoNote.videoNote.video : null;
+      }
+      default:
+        return null;
+    }
   }
 
   /**
    * Converts a received message content into a content that can be sent as a brand new message.
+   *
+   * @param localMediaPath when non-null, the main media is referenced by this local file
+   *                       (fresh upload, the only way to bypass noforwards); otherwise
+   *                       the original remote file id is reused (no re-upload).
    */
   public static @Nullable TdApi.InputMessageContent toInputMessageContent (@Nullable TdApi.MessageContent content, boolean removeCaption) {
+    return toInputMessageContent(content, removeCaption, null);
+  }
+
+  public static @Nullable TdApi.InputMessageContent toInputMessageContent (@Nullable TdApi.MessageContent content, boolean removeCaption, @Nullable String localMediaPath) {
     if (content == null) {
       return null;
     }
@@ -1911,12 +1937,25 @@ public class TD {
       }
       case TdApi.MessagePhoto.CONSTRUCTOR: {
         TdApi.MessagePhoto photo = (TdApi.MessagePhoto) content;
+        if (photo.video != null) {
+          TdApi.Video video = photo.video;
+          if (video.video == null) {
+            return null;
+          }
+          return new TdApi.InputMessageVideo(
+            new TdApi.InputVideo(newInputFile(localMediaPath, video.video.id), null, null, 0, new int[0], video.duration, video.width, video.height, video.supportsStreaming),
+            removeCaption ? null : photo.caption,
+            photo.showCaptionAboveMedia,
+            null,
+            photo.hasSpoiler
+          );
+        }
         TdApi.PhotoSize size = biggestPhotoSize(photo.photo);
         if (size == null) {
           return null;
         }
         return new TdApi.InputMessagePhoto(
-          new TdApi.InputPhoto(new TdApi.InputFileId(size.photo.id), null, null, new int[0], size.width, size.height),
+          new TdApi.InputPhoto(newInputFile(localMediaPath, size.photo.id), null, null, new int[0], size.width, size.height),
           removeCaption ? null : photo.caption,
           photo.showCaptionAboveMedia,
           null,
@@ -1929,7 +1968,7 @@ public class TD {
           return null;
         }
         return new TdApi.InputMessageVideo(
-          new TdApi.InputVideo(new TdApi.InputFileId(video.video.video.id), null, null, 0, new int[0], video.video.duration, video.video.width, video.video.height, video.video.supportsStreaming),
+          new TdApi.InputVideo(newInputFile(localMediaPath, video.video.video.id), null, null, 0, new int[0], video.video.duration, video.video.width, video.video.height, video.video.supportsStreaming),
           removeCaption ? null : video.caption,
           video.showCaptionAboveMedia,
           null,
@@ -1942,7 +1981,7 @@ public class TD {
           return null;
         }
         return new TdApi.InputMessageDocument(
-          new TdApi.InputDocument(new TdApi.InputFileId(document.document.document.id), null, false),
+          new TdApi.InputDocument(newInputFile(localMediaPath, document.document.document.id), null, false),
           removeCaption ? null : document.caption
         );
       }
@@ -1952,7 +1991,7 @@ public class TD {
           return null;
         }
         return new TdApi.InputMessageAnimation(
-          new TdApi.InputAnimation(new TdApi.InputFileId(animation.animation.animation.id), null, new int[0], animation.animation.duration, animation.animation.width, animation.animation.height),
+          new TdApi.InputAnimation(newInputFile(localMediaPath, animation.animation.animation.id), null, new int[0], animation.animation.duration, animation.animation.width, animation.animation.height),
           removeCaption ? null : animation.caption,
           animation.showCaptionAboveMedia,
           animation.hasSpoiler
@@ -1964,7 +2003,7 @@ public class TD {
           return null;
         }
         return new TdApi.InputMessageAudio(
-          new TdApi.InputAudio(new TdApi.InputFileId(audio.audio.audio.id), null, audio.audio.duration, audio.audio.title, audio.audio.performer),
+          new TdApi.InputAudio(newInputFile(localMediaPath, audio.audio.audio.id), null, audio.audio.duration, audio.audio.title, audio.audio.performer),
           removeCaption ? null : audio.caption
         );
       }
@@ -1974,7 +2013,7 @@ public class TD {
           return null;
         }
         return new TdApi.InputMessageSticker(
-          new TdApi.InputSticker(new TdApi.InputFileId(sticker.sticker.sticker.id), null, sticker.sticker.width, sticker.sticker.height),
+          new TdApi.InputSticker(newInputFile(localMediaPath, sticker.sticker.sticker.id), null, sticker.sticker.width, sticker.sticker.height),
           sticker.sticker.emoji
         );
       }
@@ -1984,7 +2023,7 @@ public class TD {
           return null;
         }
         return new TdApi.InputMessageVoiceNote(
-          new TdApi.InputVoiceNote(new TdApi.InputFileId(voiceNote.voiceNote.voice.id), voiceNote.voiceNote.duration, voiceNote.voiceNote.waveform),
+          new TdApi.InputVoiceNote(newInputFile(localMediaPath, voiceNote.voiceNote.voice.id), voiceNote.voiceNote.duration, voiceNote.voiceNote.waveform),
           removeCaption ? null : voiceNote.caption,
           null
         );
@@ -1995,7 +2034,7 @@ public class TD {
           return null;
         }
         return new TdApi.InputMessageVideoNote(
-          new TdApi.InputVideoNote(new TdApi.InputFileId(videoNote.videoNote.video.id), null, videoNote.videoNote.duration, videoNote.videoNote.length),
+          new TdApi.InputVideoNote(newInputFile(localMediaPath, videoNote.videoNote.video.id), null, videoNote.videoNote.duration, videoNote.videoNote.length),
           null
         );
       }
@@ -2014,6 +2053,10 @@ public class TD {
       default:
         return null;
     }
+  }
+
+  private static TdApi.InputFile newInputFile (@Nullable String localMediaPath, int remoteFileId) {
+    return localMediaPath != null ? new TdApi.InputFileLocal(localMediaPath) : new TdApi.InputFileId(remoteFileId);
   }
 
   private static @Nullable TdApi.PhotoSize biggestPhotoSize (@Nullable TdApi.Photo photo) {

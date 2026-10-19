@@ -15,7 +15,6 @@ import androidx.annotation.Nullable;
 import org.drinkless.tdlib.TdApi;
 import org.thunderdog.challegram.R;
 import org.thunderdog.challegram.core.Lang;
-import org.thunderdog.challegram.data.TD;
 import org.thunderdog.challegram.tool.UI;
 
 import java.util.ArrayList;
@@ -77,12 +76,32 @@ public final class ChannelCloner {
         finish(0, Lang.getString(R.string.CloneChannelSourceMissing));
         return;
       }
-      if (targetChat == null || targetChat.permissions == null || !targetChat.permissions.canSendBasicMessages) {
+      if (targetChat == null || !canPostTo(targetChat)) {
         finish(0, Lang.getString(R.string.CloneChannelTargetNoRights));
         return;
       }
       copyProfile(sourceChat, targetChat);
       loadPage(0);
+    }
+
+    private boolean canPostTo (TdApi.Chat chat) {
+      // chat.permissions describes NON-admin members; for the current user check own status
+      TdApi.ChatMemberStatus status = tdlib.chatStatus(chat.id);
+      if (status != null) {
+        switch (status.getConstructor()) {
+          case TdApi.ChatMemberStatusCreator.CONSTRUCTOR:
+            return true;
+          case TdApi.ChatMemberStatusAdministrator.CONSTRUCTOR: {
+            TdApi.ChatAdministratorRights rights = ((TdApi.ChatMemberStatusAdministrator) status).rights;
+            return rights != null && rights.canPostMessages;
+          }
+          default:
+            return false;
+        }
+      }
+      // Status not cached yet (e.g. a chat created moments ago): stay optimistic,
+      // an actual send failure will be reported with the server error.
+      return true;
     }
 
     private void copyProfile (TdApi.Chat sourceChat, TdApi.Chat targetChat) {
@@ -171,79 +190,36 @@ public final class ChannelCloner {
         }
         Collections.sort(ordered, (a, b) -> Long.compare(a.id, b.id));
 
-        ArrayList<TdApi.Function<?>> functions = new ArrayList<>();
-        ArrayList<Integer> counts = new ArrayList<>();
-        TdApi.MessageSendOptions options = new TdApi.MessageSendOptions(null, true, false, false, false, 0, false, null, 0, 0, false);
-        collectFunctions(ordered, options, functions, counts);
-
-        if (functions.isEmpty()) {
-          pageIndex--;
-          UI.post(this::sendNextPage, PAGE_DELAY_MS);
-        } else {
-          sendFunctions(functions, counts, 0);
-        }
-      });
-    }
-
-    private void collectFunctions (List<TdApi.Message> messages, TdApi.MessageSendOptions options, ArrayList<TdApi.Function<?>> functions, ArrayList<Integer> counts) {
-      int i = 0;
-      int size = messages.size();
-      while (i < size) {
-        TdApi.Message message = messages.get(i);
-        long albumId = message.mediaAlbumId;
-        if (albumId != 0) {
-          int j = i;
-          ArrayList<TdApi.InputMessageContent> contents = new ArrayList<>();
-          while (j < size && messages.get(j).mediaAlbumId == albumId) {
-            TdApi.InputMessageContent content = TD.toInputMessageContent(messages.get(j).content, false);
-            if (content != null) {
-              contents.add(content);
+        final int total = limit == LIMIT_ALL ? collected : Math.min(collected, limit);
+        ContentCopySender.send(tdlib, targetChatId, null, ordered.toArray(new TdApi.Message[0]), false, ContentCopySender.defaultSendOptions(), new ContentCopySender.Callback() {
+          @Override
+          public void onProgress (int sent, int totalMessages) {
+            if (listener != null) {
+              listener.onProgress(copied + sent, total);
             }
-            j++;
           }
-          if (contents.size() == 1) {
-            functions.add(new TdApi.SendMessage(targetChatId, null, null, options, null, contents.get(0)));
-            counts.add(1);
-          } else if (contents.size() > 1) {
-            functions.add(new TdApi.SendMessageAlbum(targetChatId, null, null, options, contents.toArray(new TdApi.InputMessageContent[0])));
-            counts.add(contents.size());
-          }
-          i = j;
-        } else {
-          TdApi.InputMessageContent content = TD.toInputMessageContent(message.content, false);
-          if (content != null) {
-            functions.add(new TdApi.SendMessage(targetChatId, null, null, options, null, content));
-            counts.add(1);
-          }
-          i++;
-        }
-      }
-    }
 
-    @SuppressWarnings({"unchecked", "rawtypes"})
-    private void sendFunctions (ArrayList<TdApi.Function<?>> functions, ArrayList<Integer> counts, int index) {
-      if (finished) {
-        return;
-      }
-      if (index >= functions.size()) {
-        pageIndex--;
-        UI.post(this::sendNextPage, PAGE_DELAY_MS);
-        return;
-      }
-      TdApi.Function function = functions.get(index);
-      tdlib.send(function, (result, error) -> {
-        if (finished) {
-          return;
-        }
-        if (error != null) {
-          finish(copied, error.message);
-          return;
-        }
-        copied += counts.get(index);
-        if (listener != null) {
-          listener.onProgress(copied, limit == LIMIT_ALL ? collected : Math.min(collected, limit));
-        }
-        sendFunctions(functions, counts, index + 1);
+          @Override
+          public void onFinished (int sent, TdApi.Error error) {
+            if (finished) {
+              return;
+            }
+            if (error != null) {
+              finish(copied + sent, error.message);
+              return;
+            }
+            copied += sent;
+            if (listener != null) {
+              listener.onProgress(copied, total);
+            }
+            pageIndex--;
+            UI.post(() -> {
+              if (!finished) {
+                sendNextPage();
+              }
+            }, PAGE_DELAY_MS);
+          }
+        });
       });
     }
 
