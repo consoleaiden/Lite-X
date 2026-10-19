@@ -62,56 +62,38 @@ public class SettingsBotRelayController extends RecyclerViewController<Void> imp
     adapter = new SettingsAdapter(this) {
       @Override
       protected void setValuedSetting (ListItem item, SettingView view, boolean isUpdate) {
-        switch (item.getId()) {
-          case R.id.btn_saveLinkStart: {
-            view.setData(statusText != null ? statusText : "");
-            break;
+        // R.id.* are not compile-time constants in this project
+        // (android.nonFinalResIds=true), so a switch is not possible here.
+        final int id = item.getId();
+        if (id == R.id.btn_saveLinkStart) {
+          view.setData(statusText != null ? statusText : "");
+        } else if (id == R.id.btn_botRelayUseBot) {
+          view.getToggler().setRadioEnabled(BotRelayConfig.useBotRelay(), isUpdate);
+        } else if (id == R.id.btn_botRelayUseRemote) {
+          view.getToggler().setRadioEnabled(BotRelayConfig.useRemoteRelay(), isUpdate);
+        } else if (id == R.id.btn_botRelayToken) {
+          view.setData(BotRelayConfig.hasBot() ? BotRelayConfig.getBotTokenPreview() : Lang.getString(R.string.BotRelayNotSet));
+        } else if (id == R.id.btn_botRelayTest) {
+          String username = BotRelayConfig.getBotUsername();
+          view.setData(!username.isEmpty() ? "@" + username : "");
+        } else if (id == R.id.btn_botRelayApiId) {
+          view.setData(BotRelayConfig.getApiId() != 0 ? String.valueOf(BotRelayConfig.getApiId()) : Lang.getString(R.string.BotRelayNotSet));
+        } else if (id == R.id.btn_botRelayApiHash) {
+          String hash = BotRelayConfig.getApiHash();
+          if (hash.isEmpty()) {
+            view.setData(Lang.getString(R.string.BotRelayNotSet));
+          } else if (hash.length() <= 8) {
+            view.setData("••••");
+          } else {
+            view.setData(hash.substring(0, 4) + "••••" + hash.substring(hash.length() - 4));
           }
-          case R.id.btn_botRelayUseBot: {
-            view.getToggler().setRadioEnabled(BotRelayConfig.useBotRelay(), isUpdate);
-            break;
-          }
-          case R.id.btn_botRelayUseRemote: {
-            view.getToggler().setRadioEnabled(BotRelayConfig.useRemoteRelay(), isUpdate);
-            break;
-          }
-          case R.id.btn_botRelayToken: {
-            view.setData(BotRelayConfig.hasBot() ? BotRelayConfig.getBotTokenPreview() : Lang.getString(R.string.BotRelayNotSet));
-            break;
-          }
-          case R.id.btn_botRelayTest: {
-            String username = BotRelayConfig.getBotUsername();
-            view.setData(!username.isEmpty() ? "@" + username : "");
-            break;
-          }
-          case R.id.btn_botRelayApiId: {
-            view.setData(BotRelayConfig.getApiId() != 0 ? String.valueOf(BotRelayConfig.getApiId()) : Lang.getString(R.string.BotRelayNotSet));
-            break;
-          }
-          case R.id.btn_botRelayApiHash: {
-            String hash = BotRelayConfig.getApiHash();
-            if (hash.isEmpty()) {
-              view.setData(Lang.getString(R.string.BotRelayNotSet));
-            } else if (hash.length() <= 8) {
-              view.setData("••••");
-            } else {
-              view.setData(hash.substring(0, 4) + "••••" + hash.substring(hash.length() - 4));
-            }
-            break;
-          }
-          case R.id.btn_botRelayUrl: {
-            String url = BotRelayConfig.getRelayUrl();
-            view.setData(!url.isEmpty() ? url : Lang.getString(R.string.BotRelayNotSet));
-            break;
-          }
-          case R.id.btn_botRelaySecret: {
-            view.setData(BotRelayConfig.getRelaySecret().isEmpty() ? Lang.getString(R.string.BotRelayNotSet) : "••••••");
-            break;
-          }
-          default: {
-            super.setValuedSetting(item, view, isUpdate);
-            break;
-          }
+        } else if (id == R.id.btn_botRelayUrl) {
+          String url = BotRelayConfig.getRelayUrl();
+          view.setData(!url.isEmpty() ? url : Lang.getString(R.string.BotRelayNotSet));
+        } else if (id == R.id.btn_botRelaySecret) {
+          view.setData(BotRelayConfig.getRelaySecret().isEmpty() ? Lang.getString(R.string.BotRelayNotSet) : "••••••");
+        } else {
+          super.setValuedSetting(item, view, isUpdate);
         }
       }
     };

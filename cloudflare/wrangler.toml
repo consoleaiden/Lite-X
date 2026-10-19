@@ -1,7 +1,7 @@
-// Cloudflare Worker configuration for the Lite-X relay.
-// Deploy:  npx wrangler deploy
-// Secrets: npx wrangler secret put BOT_TOKEN
-//          npx wrangler secret put RELAY_SECRET   (optional)
+# Cloudflare Worker configuration for the Lite-X relay.
+# Deploy:  npx wrangler deploy
+# Secrets: npx wrangler secret put BOT_TOKEN
+#          npx wrangler secret put RELAY_SECRET   (optional)
 
 name = "lite-x-relay"
 main = "worker.js"

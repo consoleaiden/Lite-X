@@ -1,0 +1,15 @@
+{
+  "name": "lite-x-relay",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cloudflare Worker that copies Telegram messages server-side for Lite-X",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "tail": "wrangler tail",
+    "check": "wrangler deploy --dry-run --outdir=dist"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
+}

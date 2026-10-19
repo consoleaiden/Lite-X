@@ -18,3 +18,9 @@ obj
 /local.properties
 
 libc++_shared.so
+
+# Cloudflare relay (custom feature)
+/cloudflare/node_modules
+/cloudflare/dist
+/cloudflare/.wrangler
+/cloudflare/.dev.vars
