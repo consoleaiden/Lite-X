@@ -26,7 +26,7 @@ import java.util.List;
  */
 public final class ContentCopySender {
   public interface Callback {
-    void onProgress (int sent, int total);
+    default void onProgress (int sent, int total) { }
 
     void onFinished (int sent, @Nullable TdApi.Error error);
   }
