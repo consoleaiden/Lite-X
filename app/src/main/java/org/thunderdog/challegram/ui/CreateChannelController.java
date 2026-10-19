@@ -61,11 +61,24 @@ import me.vkryl.core.StringUtils;
 import tgx.td.TdConstants;
 
 public class CreateChannelController extends ViewController<String[]> implements EditHeaderView.ReadyCallback, ActivityResultHandler, TextView.OnEditorActionListener {
+  public interface OnChannelCreatedListener {
+    void onChannelCreated (TdApi.Chat chat);
+  }
+
   private final AvatarPickerManager avatarPickerManager;
+  private OnChannelCreatedListener channelCreatedListener;
 
   public CreateChannelController (Context context, Tdlib tdlib) {
     super(context, tdlib);
     avatarPickerManager = new AvatarPickerManager(this);
+  }
+
+  /**
+   * When set, the newly created channel is handed back to the caller instead of
+   * continuing to the "add members" step (used by the channel cloning flow).
+   */
+  public void setOnChannelCreatedListener (OnChannelCreatedListener listener) {
+    this.channelCreatedListener = listener;
   }
 
   private EditText descView;
@@ -304,6 +317,13 @@ public class CreateChannelController extends ViewController<String[]> implements
     toggleCreating();
 
     if (chat != null) {
+      if (channelCreatedListener != null) {
+        OnChannelCreatedListener listener = channelCreatedListener;
+        channelCreatedListener = null;
+        navigateBack();
+        UI.post(() -> listener.onChannelCreated(chat), 300L);
+        return;
+      }
       CreateChannelLinkController c = new CreateChannelLinkController(context, tdlib);
       c.setArguments(new CreateChannelLinkController.Args(chat, currentImageFile));
       navigateTo(c);

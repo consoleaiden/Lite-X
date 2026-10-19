@@ -5216,7 +5216,19 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
 
   public boolean canBeForwarded () {
     TdApi.MessageProperties properties = lastMessageProperties();
-    return properties.canBeForwarded && !isEventLog();
+    if (isEventLog()) {
+      return false;
+    }
+    if (properties.canBeForwarded) {
+      return true;
+    }
+    // Chats with restricted content still allow sharing: their messages are
+    // re-published as new ones instead of being forwarded (see TD.forwardMessages).
+    TdApi.Chat chat = getChat();
+    if (chat == null) {
+      chat = tdlib.chat(getChatId());
+    }
+    return chat != null && chat.hasProtectedContent;
   }
 
   public boolean canBeReacted () {

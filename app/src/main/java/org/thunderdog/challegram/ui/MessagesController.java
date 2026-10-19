@@ -5305,7 +5305,7 @@ public class MessagesController extends ViewController<MessagesController.Argume
         long messageId = selectedMessageIds.keyAt(i);
         TGMessage m = selectedMessageIds.valueAt(i);
         TdApi.Message msg = m.getMessage(messageId);
-        if (msg == null || !m.lastMessageProperties(messageId).canBeForwarded) {
+        if (msg == null || !m.canBeForwarded()) {
           return false;
         }
       }

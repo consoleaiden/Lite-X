@@ -3446,7 +3446,7 @@ public class ShareController extends TelegramViewController<ShareController.Args
           break;
         }
         case MODE_MESSAGES: {
-          if (!messageReplyIncluded && !TD.forwardMessages(chatId, null, args.messages, needHideAuthor, needRemoveCaptions, sendOptions, functions))
+          if (!messageReplyIncluded && !TD.forwardMessages(tdlib, chatId, null, args.messages, needHideAuthor, needRemoveCaptions, sendOptions, functions))
             return;
           break;
         }

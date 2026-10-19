@@ -1447,4 +1447,14 @@
   <item type="id" name="btn_contentFilterRemoveAdUrl" />
   <item type="id" name="btn_blockAd" />
   <item type="id" name="btn_proxyTest" />
+
+  <!-- Channel cloning (custom feature) -->
+  <item type="id" name="more_btn_cloneChannel" />
+  <item type="id" name="controller_cloneChannel" />
+  <item type="id" name="btn_cloneNewChannel" />
+  <item type="id" name="btn_cloneTarget" />
+  <item type="id" name="btn_cloneTargetRetry" />
+  <item type="id" name="btn_cloneRange100" />
+  <item type="id" name="btn_cloneRange1000" />
+  <item type="id" name="btn_cloneRangeAll" />
 </resources>

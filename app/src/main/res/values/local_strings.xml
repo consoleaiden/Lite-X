@@ -57,4 +57,24 @@
   <string name="UpdateChangelog">查看更新日志</string>
   <string name="UpdateCheckNoUpdates">当前已是最新版本</string>
   <string name="UpdateCheckFailed">检查更新失败，请稍后重试</string>
+
+  <!-- Channel cloning (custom feature) -->
+  <string name="CloneChannel">克隆频道</string>
+  <string name="CloneChannelSelectTarget">选择接收克隆内容的目标频道</string>
+  <string name="CloneChannelSelectTargetInfo">仅显示你有发布权限的自己创建的频道。选择「新建频道」可先创建一个新的频道。</string>
+  <string name="CloneChannelNew">新建频道</string>
+  <string name="CloneChannelNewInfo">创建一个新频道并作为克隆目标</string>
+  <string name="CloneChannelNoTargets">没有可用的目标频道，选择「新建频道」开始</string>
+  <string name="CloneChannelLoading">正在加载频道列表…</string>
+  <string name="CloneChannelRange">克隆消息数量</string>
+  <string name="CloneChannelRangeInfo">克隆会按时间顺序把源频道内容重新发布到目标频道，禁止转发的内容同样可以克隆。</string>
+  <string name="CloneChannelRange100">最近 100 条消息</string>
+  <string name="CloneChannelRange1000">最近 1,000 条消息</string>
+  <string name="CloneChannelRangeAll">全部消息</string>
+  <string name="CloneChannelStarted">开始克隆「%1$s」→「%2$s」</string>
+  <string name="CloneChannelProgress">正在克隆：%1$d 条</string>
+  <string name="CloneChannelDone">克隆完成：共 %1$d 条消息</string>
+  <string name="CloneChannelFailed">克隆失败：%1$s</string>
+  <string name="CloneChannelSourceMissing">源频道信息不可用</string>
+  <string name="CloneChannelTargetNoRights">目标频道没有发布权限</string>
 </resources>

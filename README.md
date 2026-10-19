@@ -15,7 +15,7 @@
 | 项 | 值 |
 | --- | --- |
 | 应用名 | **Lite X**（仓库 Variables `APP_NAME`） |
-| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1820` → **1820000** |
+| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1821` → **1821000** |
 | flavor / ABI | `marshmallow`（minSdk 23）+ `arm64-v8a` / `armeabi-v7a` |
 | 构建方式 | GitHub Actions `.github/workflows/build-apk.yml`（`workflow_dispatch`），约 22 分钟 |
 | 应用内更新 | 读本仓库 `/releases/latest` |
@@ -68,6 +68,24 @@
 ### 7. CI 构建流水线（`cb72ef7` 起）
 子模块+LFS → JDK 25 → 按 `version.properties` 装 SDK/NDK → 运行时生成 `local.properties` 与 keystore → flavor 与 CMake 白名单预检 → 构建 → `aapt2` 校验 → 上传 artifact → 发布 Release。
 详见 [`docs/CI-BUILD.md`](docs/CI-BUILD.md)，逐项代码位置见 [`docs/CUSTOMIZATION.md`](docs/CUSTOMIZATION.md)。
+
+### 8. WiFi 抽屉图标 + 网络速率
+- `navigation/BackHeaderButton`：`factor=0`（主界面）不再画三条横线 + 角标，改为 WiFi 字形（三条圆弧 + 底部圆点）；`factor>0` 仍保留原本的汉堡↔返回箭头形变动画。
+- 速率采样：新增 `tool/NetworkSpeedMonitor`（`TrafficStats` 按 UID 统计收发字节，1.2s 一次采样，快升慢降 EMA），映射 4 档（阈值 24KB/s、256KB/s、2MB/s）→ 圆弧实心数量：0 档全空心，3 档全实心。
+- 底部圆点：有未读时取 `MainActivity.updateCounter()` 下发的 `ColorId.headerBadge`（橙色）着色；无未读时跟随图标主题色。原右上角小角标已移除。
+
+### 9. 禁止转发（noforwards）突破
+- 结论：服务端对 `messages.forwardMessages`（含 `asCopy`）强制 `CHAT_FORWARDS_RESTRICTED`，协议层无法绕过；采用「内容重发」。
+- `data/TD.forwardMessages(tdlib, ...)` 新重载：按 chatId 分组，源聊天 `hasProtectedContent` 时走 `buildCopyFunctions()`。
+- `TD.toInputMessageContent(MessageContent, removeCaption)`：文本/图片/视频/文件/动图/音频/贴纸/语音/圆形视频/位置/地点/联系人/骰子 → `InputMessage*`；媒体用 `InputFileId(远端文件 id)`，不重新上传；相册按 `mediaAlbumId` 聚合成 `SendMessageAlbum`。
+- 入口放行：`TGMessage.canBeForwarded()` 对 `hasProtectedContent` 聊天返回 true；`MessagesController.canShareSelectedMessages()` 改用 `TGMessage.canBeForwarded()`。
+- 折损：受限来源内容以「新消息」发布（无「转发自」署名、不计原浏览数）；投票、付费媒体等未支持类型会被跳过。
+
+### 10. 频道克隆
+- 入口：`ui/ProfileController.showCommonMore()` 在「添加成员」后插入「克隆频道」（仅频道显示）。
+- 目标选择：新增 `ui/CloneChannelController`，`GetChats` 按 100/300/600 递增拉取，过滤 `ChatTypeSupergroup.isChannel` + `permissions.canSendBasicMessages`；首行为「新建频道」。
+- 新建频道：`ui/CreateChannelController.setOnChannelCreatedListener()` 钩子，创建完成后回到克隆页继续选范围（不再进入「添加成员」流程）。
+- 执行引擎：`telegram/ChannelCloner` 先复制封面（`SetChatPhoto` + 远端 `InputFileId`）与简介（`GetSupergroupFullInfo` → `SetChatDescription`）；消息两遍处理——`GetChatHistory` 分页收集 message id（100/页），再从最旧页开始 `GetMessages` → 转 `SendMessage(Album)` 按时间顺序重发（天然支持 noforwards 来源）。范围：最近 100 / 1,000 / 全部。
 
 ---
 

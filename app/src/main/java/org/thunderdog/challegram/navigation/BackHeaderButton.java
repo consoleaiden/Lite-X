@@ -16,7 +16,9 @@ package org.thunderdog.challegram.navigation;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.RectF;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -28,6 +30,7 @@ import org.thunderdog.challegram.theme.ColorId;
 import org.thunderdog.challegram.theme.Theme;
 import org.thunderdog.challegram.theme.ThemeDelegate;
 import org.thunderdog.challegram.theme.ThemedColorAnimator;
+import org.thunderdog.challegram.tool.NetworkSpeedMonitor;
 import org.thunderdog.challegram.tool.Paints;
 import org.thunderdog.challegram.tool.Screen;
 import org.thunderdog.challegram.tool.UI;
@@ -35,7 +38,6 @@ import org.thunderdog.challegram.tool.UI;
 import me.vkryl.android.AnimatorUtils;
 import me.vkryl.android.animator.BounceAnimator;
 import me.vkryl.android.util.SingleViewProvider;
-import me.vkryl.core.ColorUtils;
 import me.vkryl.core.MathUtils;
 
 public class BackHeaderButton extends HeaderButton implements View.OnClickListener {
@@ -50,12 +52,27 @@ public class BackHeaderButton extends HeaderButton implements View.OnClickListen
   private HeaderView parentHeader;
   private final Paint paint;
 
+  private final Paint wifiPaint;
+  private final RectF wifiArcRect = new RectF();
+  private int networkLevel;
+
+  private static final float[] WIFI_ARC_RADII_DP = {4.7f, 7.7f, 10.7f};
+  private static final float WIFI_ARC_START_ANGLE = -144f;
+  private static final float WIFI_ARC_SWEEP_ANGLE = 108f;
+  private static final float WIFI_DOT_Y_DP = 6.2f;
+  private static final float WIFI_DOT_RADIUS_DP = 2.25f;
+
   public BackHeaderButton (Context context) {
     super(context);
 
     paint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
     paint.setStrokeWidth(Screen.dp(2f));
     paint.setColor(Theme.headerBackColor());
+
+    wifiPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.DITHER_FLAG);
+    wifiPaint.setStyle(Paint.Style.STROKE);
+    wifiPaint.setStrokeCap(Paint.Cap.ROUND);
+    wifiPaint.setColor(Theme.headerBackColor());
   }
 
   private int color;
@@ -64,8 +81,30 @@ public class BackHeaderButton extends HeaderButton implements View.OnClickListen
     if (this.color != color) {
       this.color = color;
       paint.setColor(color);
+      wifiPaint.setColor(color);
       invalidate();
     }
+  }
+
+  private final NetworkSpeedMonitor.LevelListener networkLevelListener = level -> setNetworkLevel(level);
+
+  public void setNetworkLevel (int level) {
+    if (this.networkLevel != level) {
+      this.networkLevel = level;
+      invalidate();
+    }
+  }
+
+  @Override
+  protected void onAttachedToWindow () {
+    super.onAttachedToWindow();
+    NetworkSpeedMonitor.instance().addListener(networkLevelListener);
+  }
+
+  @Override
+  protected void onDetachedFromWindow () {
+    NetworkSpeedMonitor.instance().removeListener(networkLevelListener);
+    super.onDetachedFromWindow();
   }
 
   @Override
@@ -179,7 +218,9 @@ public class BackHeaderButton extends HeaderButton implements View.OnClickListen
     int _05 = Screen.dp(0.5f);
     int _1 = Screen.dp(1f);
 
-    if (factor <= 1f) {
+    if (factor <= 0f) {
+      drawWifiIcon(c);
+    } else if (factor <= 1f) {
       c.rotate(factor * (reverseAngle ? -180f : 180f));
       c.drawLine(-_9, 0, _9 - _1 * factor, 0, paint);
 
@@ -197,16 +238,6 @@ public class BackHeaderButton extends HeaderButton implements View.OnClickListen
 
       c.drawLine(startX, -startY, endX, -endY, paint);
       c.drawLine(startX, startY, endX, endY, paint);
-
-      float badgeCenterX = endX;
-      float badgeCenterY = -endY - Screen.dp(1.5f);
-      float badgeVisibility = MathUtils.clamp(1f - factor) * menuHintBadgeVisible.getFloatValue();
-      if (badgeVisibility > 0f) {
-        int cutoutColor = parentHeader.getFilling().getColor();
-        int badgeColor = ColorUtils.alphaColor(MathUtils.clamp(badgeVisibility), menuHintBadgeColor.getIntValue());
-        c.drawCircle(badgeCenterX, badgeCenterY, Screen.dp(4.5f) * badgeVisibility, Paints.fillingPaint(cutoutColor));
-        c.drawCircle(badgeCenterX, badgeCenterY, Screen.dp(3f) * badgeVisibility, Paints.fillingPaint(badgeColor));
-      }
     } else {
       float factor = this.factor - 1f;
 
@@ -233,5 +264,48 @@ public class BackHeaderButton extends HeaderButton implements View.OnClickListen
     }
 
     c.restore();
+  }
+
+  /**
+   * Draws the drawer toggle: a WiFi glyph whose arcs reflect current network speed
+   * (filled arcs = faster) and a base dot that turns into the unread badge color.
+   */
+  private void drawWifiIcon (Canvas c) {
+    final int iconColor = color != 0 ? color : Theme.headerBackColor();
+    final float badgeVisibility = MathUtils.clamp(menuHintBadgeVisible.getFloatValue());
+    final int dotColor = badgeVisibility > 0f ?
+      blendColors(iconColor, menuHintBadgeColor.getIntValue(), badgeVisibility) : iconColor;
+
+    final float dotY = Screen.dp(WIFI_DOT_Y_DP);
+
+    wifiPaint.setStyle(Paint.Style.FILL);
+    wifiPaint.setColor(dotColor);
+    wifiPaint.setAlpha(Color.alpha(dotColor));
+    c.drawCircle(0, dotY, Screen.dp(WIFI_DOT_RADIUS_DP), wifiPaint);
+
+    for (int i = 0; i < WIFI_ARC_RADII_DP.length; i++) {
+      final float radius = Screen.dp(WIFI_ARC_RADII_DP[i]);
+      final boolean filled = networkLevel > i;
+
+      wifiArcRect.set(-radius, dotY - radius, radius, dotY + radius);
+
+      wifiPaint.setStyle(Paint.Style.STROKE);
+      wifiPaint.setStrokeWidth(Screen.dp(filled ? 1.9f : 1f));
+      wifiPaint.setColor(iconColor);
+      wifiPaint.setAlpha(filled ? Color.alpha(iconColor) : Math.round(Color.alpha(iconColor) * .45f));
+
+      c.drawArc(wifiArcRect, WIFI_ARC_START_ANGLE, WIFI_ARC_SWEEP_ANGLE, false, wifiPaint);
+    }
+    wifiPaint.setStyle(Paint.Style.STROKE);
+    wifiPaint.setAlpha(255);
+  }
+
+  private static int blendColors (int from, int to, float factor) {
+    factor = MathUtils.clamp(factor);
+    int a = Math.round(Color.alpha(from) + (Color.alpha(to) - Color.alpha(from)) * factor);
+    int r = Math.round(Color.red(from) + (Color.red(to) - Color.red(from)) * factor);
+    int g = Math.round(Color.green(from) + (Color.green(to) - Color.green(from)) * factor);
+    int b = Math.round(Color.blue(from) + (Color.blue(to) - Color.blue(from)) * factor);
+    return Color.argb(a, r, g, b);
   }
 }

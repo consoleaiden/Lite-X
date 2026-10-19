@@ -1801,6 +1801,237 @@ public class TD {
     return true;
   }
 
+  /**
+   * Returns true when the source chat explicitly forbids forwarding its content
+   * (Telegram's "restrict saving content" / noforwards flag).
+   */
+  public static boolean isForwardingRestricted (@Nullable Tdlib tdlib, long chatId) {
+    if (tdlib == null) {
+      return false;
+    }
+    TdApi.Chat chat = tdlib.chat(chatId);
+    return chat != null && chat.hasProtectedContent;
+  }
+
+  /**
+   * Same as {@link #forwardMessages(long, TdApi.MessageTopic, TdApi.Message[], boolean, boolean, TdApi.MessageSendOptions, ArrayList)},
+   * but for chats with forbidden forwarding it re-publishes the content instead of calling
+   * messages.forwardMessages, which the server rejects with CHAT_FORWARDS_RESTRICTED.
+   */
+  public static boolean forwardMessages (@Nullable Tdlib tdlib, long toChatId, @Nullable TdApi.MessageTopic toMessageTopicId, TdApi.Message[] messages, boolean sendCopy, boolean removeCaption, TdApi.MessageSendOptions options, ArrayList<TdApi.Function<?>> out) {
+    if (messages.length == 0) {
+      return false;
+    }
+    long fromChatId = 0;
+    int index = 0;
+    int size = 0;
+    for (int i = 0; i < messages.length; i++) {
+      TdApi.Message message = messages[i];
+      if (message.chatId != fromChatId) {
+        if (size > 0) {
+          addForwardOrCopy(tdlib, toChatId, toMessageTopicId, messages, index, size, sendCopy, removeCaption, options, out);
+        }
+        fromChatId = message.chatId;
+        index = i;
+        size = 0;
+      }
+      size++;
+    }
+    if (size > 0) {
+      addForwardOrCopy(tdlib, toChatId, toMessageTopicId, messages, index, size, sendCopy, removeCaption, options, out);
+    }
+    return true;
+  }
+
+  private static void addForwardOrCopy (@Nullable Tdlib tdlib, long toChatId, @Nullable TdApi.MessageTopic toMessageTopicId, TdApi.Message[] messages, int index, int size, boolean sendCopy, boolean removeCaption, TdApi.MessageSendOptions options, ArrayList<TdApi.Function<?>> out) {
+    long fromChatId = messages[index].chatId;
+    if (isForwardingRestricted(tdlib, fromChatId)) {
+      buildCopyFunctions(toChatId, toMessageTopicId, messages, index, size, removeCaption, options, out);
+    } else {
+      out.add(new TdApi.ForwardMessages(toChatId, toMessageTopicId, fromChatId, getMessageIds(messages, index, size), options, sendCopy, removeCaption));
+    }
+  }
+
+  /**
+   * Re-creates messages as brand new ones. Media files are referenced by their remote ids,
+   * so nothing is downloaded / re-uploaded. Used to bypass the noforwards restriction.
+   *
+   * @return amount of messages that were successfully converted
+   */
+  public static int buildCopyFunctions (long toChatId, @Nullable TdApi.MessageTopic toMessageTopicId, TdApi.Message[] messages, int from, int count, boolean removeCaption, TdApi.MessageSendOptions options, ArrayList<TdApi.Function<?>> out) {
+    int added = 0;
+    int end = from + count;
+    int i = from;
+    while (i < end) {
+      TdApi.Message message = messages[i];
+      long albumId = message.mediaAlbumId;
+      if (albumId != 0) {
+        int j = i;
+        ArrayList<TdApi.InputMessageContent> contents = new ArrayList<>();
+        while (j < end && messages[j].chatId == message.chatId && messages[j].mediaAlbumId == albumId) {
+          TdApi.InputMessageContent content = toInputMessageContent(messages[j].content, removeCaption);
+          if (content != null) {
+            contents.add(content);
+          }
+          j++;
+        }
+        if (contents.size() == 1) {
+          out.add(new TdApi.SendMessage(toChatId, toMessageTopicId, null, options, null, contents.get(0)));
+        } else if (contents.size() > 1) {
+          out.add(new TdApi.SendMessageAlbum(toChatId, toMessageTopicId, null, options, contents.toArray(new TdApi.InputMessageContent[0])));
+        }
+        added += contents.size();
+        i = j;
+      } else {
+        TdApi.InputMessageContent content = toInputMessageContent(message.content, removeCaption);
+        if (content != null) {
+          out.add(new TdApi.SendMessage(toChatId, toMessageTopicId, null, options, null, content));
+          added++;
+        }
+        i++;
+      }
+    }
+    return added;
+  }
+
+  /**
+   * Converts a received message content into a content that can be sent as a brand new message.
+   */
+  public static @Nullable TdApi.InputMessageContent toInputMessageContent (@Nullable TdApi.MessageContent content, boolean removeCaption) {
+    if (content == null) {
+      return null;
+    }
+    switch (content.getConstructor()) {
+      case TdApi.MessageText.CONSTRUCTOR: {
+        TdApi.MessageText text = (TdApi.MessageText) content;
+        if (StringUtils.isEmpty(text.text.text)) {
+          return null;
+        }
+        return new TdApi.InputMessageText(text.text, null, false);
+      }
+      case TdApi.MessagePhoto.CONSTRUCTOR: {
+        TdApi.MessagePhoto photo = (TdApi.MessagePhoto) content;
+        TdApi.PhotoSize size = biggestPhotoSize(photo.photo);
+        if (size == null) {
+          return null;
+        }
+        return new TdApi.InputMessagePhoto(
+          new TdApi.InputPhoto(new TdApi.InputFileId(size.photo.id), null, null, new int[0], size.width, size.height),
+          removeCaption ? null : photo.caption,
+          photo.showCaptionAboveMedia,
+          null,
+          photo.hasSpoiler
+        );
+      }
+      case TdApi.MessageVideo.CONSTRUCTOR: {
+        TdApi.MessageVideo video = (TdApi.MessageVideo) content;
+        if (video.video == null || video.video.video == null) {
+          return null;
+        }
+        return new TdApi.InputMessageVideo(
+          new TdApi.InputVideo(new TdApi.InputFileId(video.video.video.id), null, null, 0, new int[0], video.video.duration, video.video.width, video.video.height, video.video.supportsStreaming),
+          removeCaption ? null : video.caption,
+          video.showCaptionAboveMedia,
+          null,
+          video.hasSpoiler
+        );
+      }
+      case TdApi.MessageDocument.CONSTRUCTOR: {
+        TdApi.MessageDocument document = (TdApi.MessageDocument) content;
+        if (document.document == null || document.document.document == null) {
+          return null;
+        }
+        return new TdApi.InputMessageDocument(
+          new TdApi.InputDocument(new TdApi.InputFileId(document.document.document.id), null, false),
+          removeCaption ? null : document.caption
+        );
+      }
+      case TdApi.MessageAnimation.CONSTRUCTOR: {
+        TdApi.MessageAnimation animation = (TdApi.MessageAnimation) content;
+        if (animation.animation == null || animation.animation.animation == null) {
+          return null;
+        }
+        return new TdApi.InputMessageAnimation(
+          new TdApi.InputAnimation(new TdApi.InputFileId(animation.animation.animation.id), null, new int[0], animation.animation.duration, animation.animation.width, animation.animation.height),
+          removeCaption ? null : animation.caption,
+          animation.showCaptionAboveMedia,
+          animation.hasSpoiler
+        );
+      }
+      case TdApi.MessageAudio.CONSTRUCTOR: {
+        TdApi.MessageAudio audio = (TdApi.MessageAudio) content;
+        if (audio.audio == null || audio.audio.audio == null) {
+          return null;
+        }
+        return new TdApi.InputMessageAudio(
+          new TdApi.InputAudio(new TdApi.InputFileId(audio.audio.audio.id), null, audio.audio.duration, audio.audio.title, audio.audio.performer),
+          removeCaption ? null : audio.caption
+        );
+      }
+      case TdApi.MessageSticker.CONSTRUCTOR: {
+        TdApi.MessageSticker sticker = (TdApi.MessageSticker) content;
+        if (sticker.sticker == null || sticker.sticker.sticker == null) {
+          return null;
+        }
+        return new TdApi.InputMessageSticker(
+          new TdApi.InputSticker(new TdApi.InputFileId(sticker.sticker.sticker.id), null, sticker.sticker.width, sticker.sticker.height),
+          sticker.sticker.emoji
+        );
+      }
+      case TdApi.MessageVoiceNote.CONSTRUCTOR: {
+        TdApi.MessageVoiceNote voiceNote = (TdApi.MessageVoiceNote) content;
+        if (voiceNote.voiceNote == null || voiceNote.voiceNote.voice == null) {
+          return null;
+        }
+        return new TdApi.InputMessageVoiceNote(
+          new TdApi.InputVoiceNote(new TdApi.InputFileId(voiceNote.voiceNote.voice.id), voiceNote.voiceNote.duration, voiceNote.voiceNote.waveform),
+          removeCaption ? null : voiceNote.caption,
+          null
+        );
+      }
+      case TdApi.MessageVideoNote.CONSTRUCTOR: {
+        TdApi.MessageVideoNote videoNote = (TdApi.MessageVideoNote) content;
+        if (videoNote.videoNote == null || videoNote.videoNote.video == null) {
+          return null;
+        }
+        return new TdApi.InputMessageVideoNote(
+          new TdApi.InputVideoNote(new TdApi.InputFileId(videoNote.videoNote.video.id), null, videoNote.videoNote.duration, videoNote.videoNote.length),
+          null
+        );
+      }
+      case TdApi.MessageLocation.CONSTRUCTOR: {
+        return new TdApi.InputMessageLocation(((TdApi.MessageLocation) content).location);
+      }
+      case TdApi.MessageVenue.CONSTRUCTOR: {
+        return new TdApi.InputMessageVenue(((TdApi.MessageVenue) content).venue);
+      }
+      case TdApi.MessageContact.CONSTRUCTOR: {
+        return new TdApi.InputMessageContact(((TdApi.MessageContact) content).contact);
+      }
+      case TdApi.MessageDice.CONSTRUCTOR: {
+        return new TdApi.InputMessageDice(((TdApi.MessageDice) content).emoji, false);
+      }
+      default:
+        return null;
+    }
+  }
+
+  private static @Nullable TdApi.PhotoSize biggestPhotoSize (@Nullable TdApi.Photo photo) {
+    if (photo == null || photo.sizes == null) {
+      return null;
+    }
+    TdApi.PhotoSize best = null;
+    for (TdApi.PhotoSize size : photo.sizes) {
+      if (size == null || size.photo == null || size.photo.id == 0) {
+        continue;
+      }
+      if (best == null || size.width * size.height > best.width * best.height) {
+        best = size;
+      }
+    }
+    return best;
+  }
+
   public static int getLastSeen (TdApi.User user) {
     if (user.type.getConstructor() == TdApi.UserTypeBot.CONSTRUCTOR) {
       return 0;

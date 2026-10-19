@@ -672,6 +672,10 @@ public class ProfileController extends ViewController<ProfileController.Args> im
       ids.append(R.id.more_btn_addMember);
       strings.append(Lang.getString(R.string.AddMember));
     }
+    if (tdlib.isChannel(getChatId())) {
+      ids.append(R.id.more_btn_cloneChannel);
+      strings.append(R.string.CloneChannel);
+    }
     if (mode == Mode.CHANNEL || mode == Mode.SUPERGROUP) {
       if (Td.hasUsername(supergroup)) {
         ids.append(R.id.more_btn_share);
@@ -705,6 +709,12 @@ public class ProfileController extends ViewController<ProfileController.Args> im
   private void openPrivacyExceptions () {
     PrivacyExceptionController c = new PrivacyExceptionController(context, tdlib);
     c.setArguments(new PrivacyExceptionController.Args(getChatId()));
+    navigateTo(c);
+  }
+
+  private void openCloneChannel () {
+    CloneChannelController c = new CloneChannelController(context, tdlib);
+    c.setArguments(new CloneChannelController.Args(getChatId()));
     navigateTo(c);
   }
 
@@ -771,6 +781,9 @@ public class ProfileController extends ViewController<ProfileController.Args> im
       case Mode.GROUP: {
         if (id == R.id.more_btn_addMember) {
           addMember(null);
+        } else if (id == R.id.more_btn_cloneChannel) {
+          openCloneChannel();
+          return;
         } else if (id == R.id.btn_recentActions) {
           openRecentActions();
         } else if (id == R.id.btn_enabledReactions) {
