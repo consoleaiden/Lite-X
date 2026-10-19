@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+  <!-- DO NOT SYNC WITH TRANSLATIONS PLATFORM -->
+  <string name="UseExplicitDice">Use explicit dice</string>
+  <string name="suggested_language_code" />
+  <string name="suggested_language_code_base" />
+  <string name="suggested_language_code_plural" />
+  <string name="suggested_language_rtl" />
+
+  <string name="format_timestampWithTimeZone">%1$02d.%2$02d.%3$d, %4$d:%5$02d %6$s</string>
+
+  <string name="EmulatorDetectorReport_title">False-positive emulator detection warning on %1$s \`%2$s\`</string>
+  <string name="EmulatorDetectorReport_text">Hello. I use **Telegram X** on a real device, but it says I am running on an emulator.\n\n**My real device details:**\n\nName: %1$s \`%2$s\`\nProduct: \`%3$s\`\nDevice: \`%4$s\`\nHardware: \`%5$s\`\n\n**The app version I am using:**\n\n%6$s\n\n**Emulator detection result:** `%7$s`\n\nPlease take a look if this warning can be resolved for my device.\nThank you!</string>
+
+  <!-- Content filter (custom feature, not part of the upstream app) -->
+  <string name="ContentFilterTitle">内容过滤</string>
+  <string name="ContentFilterEnabled">启用内容过滤</string>
+  <string name="ContentFilterEnabledInfo">开启后，命中规则的聊天内容会按所选模式处理，聊天列表与聊天窗口会立即生效；关闭后原内容会重新显示。</string>
+  <string name="ContentFilterMode">过滤模式</string>
+  <string name="ContentFilterModeHide">完全过滤</string>
+  <string name="ContentFilterModeHideInfo">命中的消息直接不显示。</string>
+  <string name="ContentFilterModeCollapse">折叠提示</string>
+  <string name="ContentFilterModeCollapseInfo">命中的消息折叠成一行提示，点击该消息可展开查看原文。</string>
+  <string name="ContentFilterRules">过滤规则</string>
+  <string name="ContentFilterNoRules">还没有添加任何规则。</string>
+  <string name="ContentFilterAddRule">添加规则</string>
+  <string name="ContentFilterRemoveRule">删除规则</string>
+  <string name="ContentFilterEditRule">编辑规则</string>
+  <string name="ContentFilterRemoveConfirm">确定删除这条过滤规则？</string>
+  <string name="ContentFilterTypeKeyword">关键词</string>
+  <string name="ContentFilterTypeRegex">正则表达式</string>
+  <string name="ContentFilterPatternHint">输入关键词或正则表达式</string>
+  <string name="ContentFilterInvalidRegex">正则表达式无效</string>
+  <string name="ContentFilteredCollapsed">内容已被过滤，点击查看</string>
+  <string name="ContentFilteredPreview">消息已被过滤</string>
+
+  <string name="AdFilterSection">屏蔽广告</string>
+  <string name="AdFilterEnabled">屏蔽系统广告</string>
+  <string name="AdFilterEnabledInfo">开启后自动屏蔽：聊天列表中的代理赞助商广告、聊天中带\"广告 / Ad\"标识的推广消息，以及已手动屏蔽的链接。关闭后恢复显示。</string>
+  <string name="AdFilterBlockedUrls">已屏蔽的链接</string>
+  <string name="AdFilterNoUrls">还没有屏蔽任何链接。长按聊天中的广告链接，选择\"屏蔽广告\"即可添加。</string>
+  <string name="AdFilterBlockAction">屏蔽广告</string>
+  <string name="AdFilterBlockedToast">已屏蔽该链接的广告</string>
+  <string name="AdFilterAlreadyBlockedToast">该链接已在屏蔽列表中</string>
+  <string name="AdFilterRemoveUrl">取消屏蔽</string>
+  <string name="AdFilterRemoveConfirm">取消屏蔽后，该链接的广告将重新显示。</string>
+  <string name="AdFilterListNote">提示：聊天列表中的广告在重新进入聊天列表后生效。</string>
+  <string name="AdFilteredPlaceholder">广告链接已屏蔽</string>
+
+  <string name="ProxyTestSpeed">测速</string>
+  <string name="ProxyTesting">正在测速，请稍候…</string>
+  <string name="ProxyTestResult">测速完成：%1$s ms</string>
+  <string name="ProxyTestFailed">测速失败：无法连接该代理</string>
+
+  <!-- GitHub Releases based in-app updater (custom feature) -->
+  <string name="AppUpdateGithubPrompt">**Lite X** `%2$s` 新版本已发布，是否现在下载更新？(%1$s)</string>
+  <string name="UpdateChangelog">查看更新日志</string>
+  <string name="UpdateCheckNoUpdates">当前已是最新版本</string>
+  <string name="UpdateCheckFailed">检查更新失败，请稍后重试</string>
+</resources>
