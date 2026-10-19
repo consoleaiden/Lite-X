@@ -16,6 +16,7 @@ import org.drinkless.tdlib.TdApi;
 import org.thunderdog.challegram.R;
 import org.thunderdog.challegram.core.Lang;
 import org.thunderdog.challegram.tool.UI;
+import org.thunderdog.challegram.unsorted.BotRelayConfig;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -191,36 +192,86 @@ public final class ChannelCloner {
         Collections.sort(ordered, (a, b) -> Long.compare(a.id, b.id));
 
         final int total = limit == LIMIT_ALL ? collected : Math.min(collected, limit);
-        ContentCopySender.send(tdlib, targetChatId, null, ordered.toArray(new TdApi.Message[0]), false, ContentCopySender.defaultSendOptions(), new ContentCopySender.Callback() {
-          @Override
-          public void onProgress (int sent, int totalMessages) {
-            if (listener != null) {
-              listener.onProgress(copied + sent, total);
-            }
-          }
-
-          @Override
-          public void onFinished (int sent, TdApi.Error error) {
-            if (finished) {
-              return;
-            }
-            if (error != null) {
-              finish(copied + sent, error.message);
-              return;
-            }
-            copied += sent;
-            if (listener != null) {
-              listener.onProgress(copied, total);
-            }
-            pageIndex--;
-            UI.post(() -> {
-              if (!finished) {
-                sendNextPage();
-              }
-            }, PAGE_DELAY_MS);
-          }
-        });
+        copyPage(ordered, total);
       });
+    }
+
+    /**
+     * When a bot is configured it can copy messages server-side (no download, no
+     * upload, no traffic on the phone). Anything it refuses — typically content
+     * protected chats — is retried locally afterwards.
+     */
+    private void copyPage (List<TdApi.Message> ordered, int total) {
+      if (!BotRelayConfig.canUseBot()) {
+        copyLocally(ordered, total);
+        return;
+      }
+      copyViaBot(ordered, 0, new ArrayList<>(), total);
+    }
+
+    private void copyViaBot (List<TdApi.Message> ordered, int index, List<TdApi.Message> failed, int total) {
+      if (finished) {
+        return;
+      }
+      if (index >= ordered.size()) {
+        if (failed.isEmpty()) {
+          advancePage();
+        } else {
+          copyLocally(failed, total);
+        }
+        return;
+      }
+      TdApi.Message message = ordered.get(index);
+      BotApiClient.copyMessage(targetChatId, message.chatId, message.id, (result, errorCode, errorMessage) -> {
+        if (finished) {
+          return;
+        }
+        if (errorCode == 0 && result != null) {
+          copied++;
+          if (listener != null) {
+            listener.onProgress(copied, total);
+          }
+        } else {
+          failed.add(message);
+        }
+        copyViaBot(ordered, index + 1, failed, total);
+      });
+    }
+
+    private void copyLocally (List<TdApi.Message> ordered, int total) {
+      ContentCopySender.send(tdlib, targetChatId, null, ordered.toArray(new TdApi.Message[0]), false, ContentCopySender.defaultSendOptions(), new ContentCopySender.Callback() {
+        @Override
+        public void onProgress (int sent, int totalMessages) {
+          if (listener != null) {
+            listener.onProgress(copied + sent, total);
+          }
+        }
+
+        @Override
+        public void onFinished (int sent, TdApi.Error error) {
+          if (finished) {
+            return;
+          }
+          if (error != null) {
+            finish(copied + sent, error.message);
+            return;
+          }
+          copied += sent;
+          if (listener != null) {
+            listener.onProgress(copied, total);
+          }
+          advancePage();
+        }
+      });
+    }
+
+    private void advancePage () {
+      pageIndex--;
+      UI.post(() -> {
+        if (!finished) {
+          sendNextPage();
+        }
+      }, PAGE_DELAY_MS);
     }
 
     private void finish (int copied, @Nullable String errorMessage) {

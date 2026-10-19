@@ -77,4 +77,51 @@
   <string name="CloneChannelFailed">克隆失败：%1$s</string>
   <string name="CloneChannelSourceMissing">源频道信息不可用</string>
   <string name="CloneChannelTargetNoRights">目标频道没有发布权限</string>
+
+  <!-- Bot relay / restricted content (custom feature) -->
+  <string name="BotRelayTitle">受限内容与机器人</string>
+  <string name="BotRelaySaveSection">链接直存</string>
+  <string name="BotRelaySaveLink">粘贴链接保存内容</string>
+  <string name="BotRelaySaveLinkInfo">支持 t.me 公开频道、私有频道邀请链接（t.me/c/…）以及群组消息链接。内容会以「全新消息」形式发布，因此禁止转发（受保护内容）的频道同样可用。</string>
+  <string name="BotRelaySaveLinkHint">粘贴消息链接，例如 https://t.me/channel/123</string>
+  <string name="BotRelaySaveLinkEmpty">请先粘贴一个消息链接</string>
+  <string name="BotRelaySaveLinkInvalid">无法解析该链接，请确认消息链接是否正确</string>
+  <string name="BotRelaySaveLinkNoAccess">无法读取该消息，请先加入对应频道或群组</string>
+  <string name="BotRelaySavedMessages">收藏夹</string>
+  <string name="BotRelayPickTarget">选择保存位置</string>
+  <string name="BotRelaySaving">正在保存…</string>
+  <string name="BotRelaySaveDone">已保存 %1$d 条消息</string>
+  <string name="BotRelaySaveFailed">保存失败：%1$s</string>
+  <string name="BotRelayResolving">正在解析链接…</string>
+
+  <string name="BotRelayBotSection">机器人中转</string>
+  <string name="BotRelayUseBot">使用机器人加速复制</string>
+  <string name="BotRelayUseBotInfo">开启后，克隆与链接保存会先请求机器人代为复制：由 Telegram 服务器直接搬运，不消耗手机流量，速度更快。遇到受保护内容时自动回退到本机下载再上传的突破方案。</string>
+  <string name="BotRelayToken">BOT_TOKEN</string>
+  <string name="BotRelayTokenHint">从 @BotFather 获取，形如 123456:ABC-DEF…</string>
+  <string name="BotRelayTokenInfo">机器人需要被加入目标频道并设为管理员（有发布权限）；若要搬运某个源频道，机器人也需是该频道成员或管理员。</string>
+  <string name="BotRelayTest">测试机器人连接</string>
+  <string name="BotRelayTesting">正在测试…</string>
+  <string name="BotRelayTestOk">连接成功：@%1$s</string>
+  <string name="BotRelayTestFailed">连接失败：%1$s</string>
+  <string name="BotRelayNotSet">未设置</string>
+
+  <string name="BotRelayApiSection">API 凭据</string>
+  <string name="BotRelayApiId">API_ID</string>
+  <string name="BotRelayApiHash">API_HASH</string>
+  <string name="BotRelayApiHint">数字形式的 API ID</string>
+  <string name="BotRelayApiHashHint">32 位十六进制字符串</string>
+  <string name="BotRelayApiInfo">用于在 my.telegram.org 创建的应用凭据。自建「受限内容保存」服务（Pyrogram / Telethon 的 user session 方案）或部署本项目的 Cloudflare 中转时使用；仅在本机使用机器人中转时可以不填。</string>
+
+  <string name="BotRelayCloudSection">云端中转服务</string>
+  <string name="BotRelayUrl">服务地址</string>
+  <string name="BotRelayUrlHint">https://your-worker.workers.dev</string>
+  <string name="BotRelaySecret">中转口令（可选）</string>
+  <string name="BotRelaySecretHint">与 Cloudflare 环境变量 RELAY_SECRET 保持一致</string>
+  <string name="BotRelayUseRemote">克隆时经由云端服务</string>
+  <string name="BotRelayCloudInfo">填写的地址指向本项目自带的 Cloudflare Worker（见仓库 cloudflare/ 目录）。云端使用同一个 BOT_TOKEN 在服务器侧搬运消息，适合长时间批量克隆。</string>
+  <string name="BotRelayHelp">如何部署与获取这些参数</string>
+  <string name="BotRelayHelpText">1. BOT_TOKEN\n在 @BotFather 发送 /newbot，按提示创建后获得 Token；把它设为目标频道管理员（需「发布消息」权限），并加入源频道。\n\n2. API_ID / API_HASH\n打开 https://my.telegram.org → API development tools，创建应用后获得。仅在自建外部服务时需要。\n\n3. Cloudflare 中转\n仓库 cloudflare/ 目录内含 worker.js 与部署说明：在 Cloudflare Pages / Workers 中创建项目，绑定 BOT_TOKEN 环境变量，然后把生成的地址填到上面的「服务地址」。\n\n4. 不想配置任何服务？\n直接使用即可：本机「下载 + 重新上传」方案已能突破禁止转发限制。</string>
+  <string name="BotRelayRemoteStarted">已提交云端中转任务</string>
+  <string name="BotRelayRemoteFailed">云端中转失败：%1$s</string>
 </resources>

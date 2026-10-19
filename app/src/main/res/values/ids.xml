@@ -1457,4 +1457,18 @@
   <item type="id" name="btn_cloneRange100" />
   <item type="id" name="btn_cloneRange1000" />
   <item type="id" name="btn_cloneRangeAll" />
+
+  <!-- Bot relay / restricted content (custom feature) -->
+  <item type="id" name="btn_relaySettings" />
+  <item type="id" name="controller_botRelay" />
+  <item type="id" name="btn_saveLinkStart" />
+  <item type="id" name="btn_botRelayUseBot" />
+  <item type="id" name="btn_botRelayToken" />
+  <item type="id" name="btn_botRelayTest" />
+  <item type="id" name="btn_botRelayApiId" />
+  <item type="id" name="btn_botRelayApiHash" />
+  <item type="id" name="btn_botRelayUrl" />
+  <item type="id" name="btn_botRelaySecret" />
+  <item type="id" name="btn_botRelayUseRemote" />
+  <item type="id" name="btn_botRelayHelp" />
 </resources>

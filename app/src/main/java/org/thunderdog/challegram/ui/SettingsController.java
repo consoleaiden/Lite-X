@@ -650,6 +650,8 @@ public class SettingsController extends ViewController<Void> implements
       items.add(new ListItem(ListItem.TYPE_SEPARATOR));
     }
     items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_contentFilterSettings, R.drawable.baseline_block_24, R.string.ContentFilterTitle));
+    items.add(new ListItem(ListItem.TYPE_SEPARATOR));
+    items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_relaySettings, R.drawable.baseline_sync_24, R.string.BotRelayTitle));
     items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
 
     items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
@@ -1154,6 +1156,8 @@ public class SettingsController extends ViewController<Void> implements
       });
     } else if (viewId == R.id.btn_contentFilterSettings) {
       navigateTo(new SettingsContentFilterController(context, tdlib));
+    } else if (viewId == R.id.btn_relaySettings) {
+      navigateTo(new SettingsBotRelayController(context, tdlib));
     } else if (viewId == R.id.btn_notificationSettings) {
       navigateTo(new SettingsNotificationController(context, tdlib));
     } else if (viewId == R.id.btn_devices) {
