@@ -22,6 +22,14 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 public class BotRelayConfig {
+  /**
+   * Relay deployed from cloudflare/ of this repository. Only the address is
+   * prefilled — the shared secret must be entered by the user, because the
+   * repository and the published APKs are public and a hardcoded secret would
+   * let anyone else spend the owner's bot quota.
+   */
+  public static final String DEFAULT_RELAY_URL = "https://lite-x-relay.84339075.workers.dev";
+
   private static final String KEY_API_ID = "settings_bot_relay_api_id";
   private static final String KEY_API_HASH = "settings_bot_relay_api_hash";
   private static final String KEY_BOT_TOKEN = "settings_bot_relay_bot_token";
@@ -97,7 +105,8 @@ public class BotRelayConfig {
 
   public static @NonNull String getRelayUrl () {
     String value = Settings.instance().getString(KEY_RELAY_URL, "");
-    return value != null ? value.trim() : "";
+    value = value != null ? value.trim() : "";
+    return value.isEmpty() ? DEFAULT_RELAY_URL : value;
   }
 
   public static void setRelayUrl (@Nullable String url) {
@@ -106,7 +115,12 @@ public class BotRelayConfig {
 
   public static boolean hasRelayUrl () {
     String url = getRelayUrl();
-    return url.startsWith("http://") || url.startsWith("https://");
+    if (!(url.startsWith("http://") || url.startsWith("https://"))) {
+      return false;
+    }
+    // The address alone is not enough: the public build ships no shared secret,
+    // so every call would be rejected with 401 until the user enters one.
+    return !getRelaySecret().isEmpty();
   }
 
   public static @NonNull String getRelaySecret () {

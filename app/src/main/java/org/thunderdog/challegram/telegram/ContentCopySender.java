@@ -14,6 +14,7 @@ import androidx.annotation.Nullable;
 
 import org.drinkless.tdlib.TdApi;
 import org.thunderdog.challegram.data.TD;
+import org.thunderdog.challegram.tool.UI;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -25,6 +26,9 @@ import java.util.List;
  * re-sending media that merely references a protected chat (CHAT_FORWARDS_RESTRICTED).
  */
 public final class ContentCopySender {
+  private static final long DOWNLOAD_POLL_MS = 500L;
+  private static final int DOWNLOAD_POLL_MAX = 2400; // 20 minutes
+
   public interface Callback {
     default void onProgress (int sent, int total) { }
 
@@ -196,15 +200,42 @@ public final class ContentCopySender {
         callback.onReady(file.local.path);
         return;
       }
-      tdlib.send(new TdApi.DownloadFile(file.id, TdlibFilesManager.PRIORITY_USER_REQUEST_SHARE, 0, 0, true), (downloaded, error) -> {
+      // Asynchronous on purpose: a synchronous DownloadFile parks TDLib's whole
+      // request queue until the transfer finishes, which freezes the UI for
+      // minutes on a large video.
+      tdlib.send(new TdApi.DownloadFile(file.id, TdlibFilesManager.PRIORITY_USER_REQUEST_SHARE, 0, 0, false), (started, error) -> {
         if (finished) {
           return;
         }
-        if (error != null || downloaded == null || downloaded.local == null || !downloaded.local.isDownloadingCompleted || downloaded.local.path == null || downloaded.local.path.isEmpty()) {
-          finish(new TdApi.Error(error != null ? error.code : 400, error != null && error.message != null && !error.message.isEmpty() ? error.message : "Failed to download media"));
+        if (error != null) {
+          finish(new TdApi.Error(error.code, error.message != null && !error.message.isEmpty() ? error.message : "Failed to download media"));
           return;
         }
-        callback.onReady(downloaded.local.path);
+        pollDownload(file.id, 0, callback);
+      });
+    }
+
+    private void pollDownload (int fileId, int attempt, PathCallback callback) {
+      if (finished) {
+        return;
+      }
+      tdlib.send(new TdApi.GetFile(fileId), (file, error) -> {
+        if (finished) {
+          return;
+        }
+        if (error != null) {
+          finish(error);
+          return;
+        }
+        if (file != null && file.local != null && file.local.isDownloadingCompleted && file.local.path != null && !file.local.path.isEmpty()) {
+          callback.onReady(file.local.path);
+          return;
+        }
+        if (attempt >= DOWNLOAD_POLL_MAX) {
+          finish(new TdApi.Error(400, "Media download timed out"));
+          return;
+        }
+        UI.post(() -> pollDownload(fileId, attempt + 1, callback), DOWNLOAD_POLL_MS);
       });
     }
 

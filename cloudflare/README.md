@@ -31,6 +31,27 @@ npx wrangler secret put BOT_TOKEN   # 粘贴 @BotFather 给的 token
 npx wrangler secret put RELAY_SECRET # 可选，与 App 里的「中转口令」一致
 ```
 
+本项目已经部署过一个实例，App 的「服务地址」默认预填它：
+
+```
+https://lite-x-relay.84339075.workers.dev
+```
+
+已配置的密钥：`BOT_TOKEN`、`RELAY_SECRET`。
+**口令不写进仓库**（仓库与 Release 里的 APK 都是公开的，硬编码口令等于把 bot 配额送给所有人），
+因此在 App 里仍需手动粘贴一次「中转口令」，可以在本机用下面的命令查回：
+
+```bash
+npx wrangler secret list            # 只列名字，看不到值
+```
+
+忘记口令时重新生成一个即可，两条命令同步更新：
+
+```bash
+npx wrangler secret put RELAY_SECRET   # Worker 侧
+# App → 设置 → 受限内容与机器人 → 中转口令
+```
+
 ## 部署（Pages Functions）
 
 1. Cloudflare 控制台 → Workers & Pages → Create → Pages → 连接到仓库；

@@ -56,6 +56,8 @@ public final class ChannelCloner {
     private final List<long[]> pages = new ArrayList<>();
     private int collected;
     private int copied;
+    /** Oldest message id already collected; guards against duplicated page edges. */
+    private long smallestCollected = Long.MAX_VALUE;
 
     private int pageIndex;
     private int skipInOldestPage;
@@ -132,18 +134,34 @@ public final class ChannelCloner {
           startSending();
           return;
         }
+        // TDLib returns fromMessageId itself when offset == 0, so the newest
+        // item of every following page repeats the oldest item of the previous
+        // one. Keep only ids strictly older than what we already have.
         long[] ids = new long[messages.messages.length];
-        for (int i = 0; i < ids.length; i++) {
-          ids[i] = messages.messages[i].id;
+        int count = 0;
+        long oldest = smallestCollected;
+        for (TdApi.Message message : messages.messages) {
+          if (message == null || message.id >= smallestCollected) {
+            continue;
+          }
+          ids[count++] = message.id;
+          if (message.id < oldest) {
+            oldest = message.id;
+          }
         }
-        pages.add(ids);
-        collected += ids.length;
+        if (count == 0) {
+          // Nothing new (end of history, or a page made purely of duplicates).
+          startSending();
+          return;
+        }
+        pages.add(Arrays.copyOf(ids, count));
+        collected += count;
+        smallestCollected = oldest;
         if (limit != LIMIT_ALL && collected >= limit) {
           startSending();
           return;
         }
-        long nextFromMessageId = ids[ids.length - 1];
-        UI.post(() -> loadPage(nextFromMessageId), PAGE_DELAY_MS);
+        UI.post(() -> loadPage(oldest), PAGE_DELAY_MS);
       });
     }
 

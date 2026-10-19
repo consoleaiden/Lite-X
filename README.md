@@ -15,7 +15,7 @@
 | 项 | 值 |
 | --- | --- |
 | 应用名 | **Lite X**（仓库 Variables `APP_NAME`） |
-| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1823` → **1823000** |
+| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1824` → **1824000** |
 | flavor / ABI | `marshmallow`（minSdk 23）+ `arm64-v8a` / `armeabi-v7a` |
 | 构建方式 | GitHub Actions `.github/workflows/build-apk.yml`（`workflow_dispatch`），约 22 分钟 |
 | 应用内更新 | 读本仓库 `/releases/latest` |
@@ -76,7 +76,7 @@
 
 ### 9. 禁止转发（noforwards）突破
 - 结论：服务端对 `messages.forwardMessages`（含 `asCopy`）**以及复用受保护聊天远端 fileId 的 `messages.sendMedia`** 都会返回 `CHAT_FORWARDS_RESTRICTED`；唯一可靠方案是「下载 → 全新上传」。
-- 新增 `telegram/ContentCopySender`：顺序处理消息——主媒体未在本地时用 `DownloadFile(synchronous=true, PRIORITY_USER_REQUEST_SHARE)` 下载，然后以 `InputFileLocal` 构建内容发送；相册按 `mediaAlbumId` 聚合成 `SendMessageAlbum`；任一步失败即中止并回调错误。
+- 新增 `telegram/ContentCopySender`：顺序处理消息——主媒体未在本地时异步 `DownloadFile(..., synchronous=false)` 后轮询 `GetFile` 直到完成（**不能用 `synchronous=true`**，它会占住 TDLib 整个请求队列直到传输结束，大视频直接把界面卡死），然后以 `InputFileLocal` 构建内容发送；相册按 `mediaAlbumId` 聚合成 `SendMessageAlbum`；任一步失败即中止并回调错误。
 - `data/TD.forwardMessages(tdlib, ...)`：源聊天 `hasProtectedContent` 的分组直接交给 `ContentCopySender`（异步），其余仍走 `ForwardMessages`。
 - `TD.toInputMessageContent(content, removeCaption, localMediaPath)`：文本/图片（含 MessagePhoto 内嵌视频）/视频/文件/动图/音频/贴纸/语音/圆形视频/位置/地点/联系人/骰子 → `InputMessage*`；投票、付费媒体等未支持类型跳过。
 - 入口放行：`TGMessage.canBeForwarded()` 对 `hasProtectedContent` 聊天返回 true；`MessagesController.canShareSelectedMessages()` 改用 `TGMessage.canBeForwarded()`。
@@ -84,10 +84,11 @@
 
 ### 10. 频道克隆
 - 入口：`ui/ProfileController.showCommonMore()` 在「添加成员」后插入「克隆频道」（仅频道显示）。
-- 目标选择：新增 `ui/CloneChannelController`，`GetChats` 按 100/300/600 递增拉取，过滤 `ChatTypeSupergroup.isChannel` + `permissions.canSendBasicMessages`；首行为「新建频道」。
+- 目标选择：新增 `ui/CloneChannelController`，先 `ChatListMain` 再 `ChatListArchive` 累加去重（缺失的 Chat 用 `GetChat` 补拉），过滤 `ChatTypeSupergroup.isChannel` + **自己**可发帖（见下条）；首行为「新建频道」。
 - 新建频道：`ui/CreateChannelController.setOnChannelCreatedListener()` 钩子，创建完成后回到克隆页继续选范围（不再进入「添加成员」流程）。
 - 目标判定：`Chat.permissions` 是「非管理员成员」的权限（广播频道恒为不可发帖），**不能**用来判定自己；改用 `tdlib.chatStatus(chatId)`——Creator 或 Administrator+canPostMessages 才算可发布（克隆引擎侧对刚创建、状态未缓存的频道保持乐观）。
 - 执行引擎：`telegram/ChannelCloner` 先复制封面（`SetChatPhoto` + 远端 `InputFileId`）与简介（`GetSupergroupFullInfo` → `SetChatDescription`）；消息两遍处理——`GetChatHistory` 分页收集 message id（100/页），再从最旧页开始 `GetMessages` → 交给 `ContentCopySender` 按时间顺序「下载+重发」（天然支持 noforwards 来源）。范围：最近 100 / 1,000 / 全部。
+- 分页去重：`getChatHistory` 的 `offset=0` 会**包含** `fromMessageId` 自身，导致每页边界消息被收集两次（克隆结果重复）。改为只接受 `id < 已收集最小 id` 的消息，`count == 0` 即视为到底。
 
 ### 11. 链接直存 + 机器人中转 + Cloudflare 中转（`cloudflare/`）
 先给结论：`Save-Restricted-Content-Bot-v3` / `save-restricted-content-bot` / `Auto-Forward-Bot-V2` 绕过禁止转发的原理与第 9 节**完全一致**——用 api_id/api_hash 登录的 **user session** 读取受限消息 → 下载 → 以全新消息重新上传（bot 只做交互层）。所以没有移植它们的代码，只把其中两处「确有增量」的能力做进了 App：
@@ -99,6 +100,7 @@
 - 新增 `ui/SettingsBotRelayController`（设置 → 受限内容与机器人）：`BOT_TOKEN`、`API_ID`、`API_HASH`、中转地址/口令、开关与「测试连接」；存储走新增的 `unsorted/BotRelayConfig`（`Settings` 键值，token 只展示 `123456:••••`）。
 - `ChannelCloner` 增加可选快路径：开启机器人中转时先逐条 `copyMessage`，被拒的消息收集起来再走 `ContentCopySender`。
 - `cloudflare/`：`worker.js`（`/api/copy`、`/api/clone`、`/api/health`、`/webhook`）+ `wrangler.toml` + 部署说明。Worker 只有 Bot API 能力，**跑不了 user session**，因此禁止转发的核心突破仍在客户端完成。
+- 已部署实例：`https://lite-x-relay.84339075.workers.dev`（密钥 `BOT_TOKEN`、`RELAY_SECRET` 已配）。App 的「服务地址」默认预填该地址；**口令不进仓库**（仓库与 Release 的 APK 都公开，硬编码等于把 bot 配额送给所有人），需在 App 里粘一次。
 
 ---
 
