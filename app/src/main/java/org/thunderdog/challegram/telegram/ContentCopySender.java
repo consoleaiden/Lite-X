@@ -169,6 +169,7 @@ public final class ContentCopySender {
       sendContents(contents, consumed);
     }
 
+    @SuppressWarnings({"unchecked", "rawtypes"})
     private void sendContents (List<TdApi.InputMessageContent> contents, int consumed) {
       final TdApi.Function<?> function;
       if (contents.size() == 1) {

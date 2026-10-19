@@ -161,7 +161,8 @@ public final class ChannelCloner {
           startSending();
           return;
         }
-        UI.post(() -> loadPage(oldest), PAGE_DELAY_MS);
+        final long nextFromMessageId = oldest;
+        UI.post(() -> loadPage(nextFromMessageId), PAGE_DELAY_MS);
       });
     }
 
