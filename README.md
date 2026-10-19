@@ -15,7 +15,7 @@
 | 项 | 值 |
 | --- | --- |
 | 应用名 | **Lite X**（仓库 Variables `APP_NAME`） |
-| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1824` → **1824000** |
+| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1825` → **1825000** |
 | flavor / ABI | `marshmallow`（minSdk 23）+ `arm64-v8a` / `armeabi-v7a` |
 | 构建方式 | GitHub Actions `.github/workflows/build-apk.yml`（`workflow_dispatch`），约 22 分钟 |
 | 应用内更新 | 读本仓库 `/releases/latest` |
@@ -81,6 +81,8 @@
 - `TD.toInputMessageContent(content, removeCaption, localMediaPath)`：文本/图片（含 MessagePhoto 内嵌视频）/视频/文件/动图/音频/贴纸/语音/圆形视频/位置/地点/联系人/骰子 → `InputMessage*`；投票、付费媒体等未支持类型跳过。
 - 入口放行：`TGMessage.canBeForwarded()` 对 `hasProtectedContent` 聊天返回 true；`MessagesController.canShareSelectedMessages()` 改用 `TGMessage.canBeForwarded()`。
 - 折损：受限来源内容以「新消息」发布（无「转发自」署名、不计原浏览数）；大体积媒体需先完整下载。
+- **踩过的坑（1825 修）**：只做「下载 → `InputFileLocal(下载路径)`」仍然会被 400。原因在客户端：**TDLib 的文件数据库按 path 建有 `path → file_id` 映射**，把 TDLib 自己从受保护聊天下载的那份文件原样递回去，TDLib 直接复用了原来的远端 file_id，服务端视角与 `InputFileId` 完全等价。修法：发送前把文件**落到一个 TDLib 从未见过的路径**（`cacheDir/reupload/upload_<nano>_<n><ext>`，同盘优先硬链接零拷贝、否则流复制），强制真正上传；会话结束后延时 60s 清理。
+- **第二道保险（1825 加）**：`chat.hasProtectedContent` 这个缓存标志并不可靠（可能陈旧、或该聊天从未被 `getChat` 过），所以 `ShareController` 发送处拦截 `ForwardMessages` 的返回：命中 `CHAT_FORWARDS_RESTRICTED`（`TD.isForwardsRestricted`）就**自动降级**为 `ContentCopySender` 重发，服务端不会有重复消息（被拒的转发根本没落库）。降级失败的错误串会带 `[copy]` 后缀，便于区分是「转发被拒」还是「下载重传失败」。
 
 ### 10. 频道克隆
 - 入口：`ui/ProfileController.showCommonMore()` 在「添加成员」后插入「克隆频道」（仅频道显示）。

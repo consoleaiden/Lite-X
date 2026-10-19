@@ -1815,11 +1815,57 @@ public class TD {
   }
 
   /**
+   * True when the server refused an operation because the source chat protects its
+   * content. The cache flags used by {@link #isForwardingRestricted} are not
+   * authoritative — they may be stale or simply missing for a chat we never opened —
+   * so the real decision is made by the server and caught here.
+   */
+  public static boolean isForwardsRestricted (@Nullable TdApi.Error error) {
+    if (error == null || error.message == null) {
+      return false;
+    }
+    String message = error.message;
+    return message.contains("CHAT_FORWARDS_RESTRICTED")
+      || message.contains("protected content")
+      || message.contains("can't be forwarded")
+      || message.contains("can't be saved")
+      || message.contains("noforwards");
+  }
+
+  /**
    * Same as {@link #forwardMessages(long, TdApi.MessageTopic, TdApi.Message[], boolean, boolean, TdApi.MessageSendOptions, ArrayList)},
    * but for chats with forbidden forwarding it re-publishes the content instead of calling
    * messages.forwardMessages, which the server rejects with CHAT_FORWARDS_RESTRICTED.
    */
+  /**
+   * Everything needed to re-publish a group of messages when the server refuses the
+   * forward. Kept as a plain holder so callers never need to look inside TdApi objects.
+   */
+  public static final class ForwardFallback {
+    public final long toChatId;
+    public final @Nullable TdApi.MessageTopic topicId;
+    public final TdApi.MessageSendOptions options;
+    public final TdApi.Message[] messages;
+
+    ForwardFallback (long toChatId, @Nullable TdApi.MessageTopic topicId, TdApi.MessageSendOptions options, TdApi.Message[] messages) {
+      this.toChatId = toChatId;
+      this.topicId = topicId;
+      this.options = options;
+      this.messages = messages;
+    }
+  }
+
   public static boolean forwardMessages (@Nullable Tdlib tdlib, long toChatId, @Nullable TdApi.MessageTopic toMessageTopicId, TdApi.Message[] messages, boolean sendCopy, boolean removeCaption, TdApi.MessageSendOptions options, ArrayList<TdApi.Function<?>> out) {
+    return forwardMessages(tdlib, toChatId, toMessageTopicId, messages, sendCopy, removeCaption, options, out, null);
+  }
+
+  /**
+   * @param fallbacks when non-null, receives the messages behind every generated
+   *                  messages.forwardMessages call, so that the caller can retry them
+   *                  through {@link ContentCopySender} if the server still rejects the
+   *                  forward (the "noforwards" flag is not always visible locally).
+   */
+  public static boolean forwardMessages (@Nullable Tdlib tdlib, long toChatId, @Nullable TdApi.MessageTopic toMessageTopicId, TdApi.Message[] messages, boolean sendCopy, boolean removeCaption, TdApi.MessageSendOptions options, ArrayList<TdApi.Function<?>> out, @Nullable Map<TdApi.Function<?>, ForwardFallback> fallbacks) {
     if (messages.length == 0) {
       return false;
     }
@@ -1830,7 +1876,7 @@ public class TD {
       TdApi.Message message = messages[i];
       if (message.chatId != fromChatId) {
         if (size > 0) {
-          addForwardOrCopy(tdlib, toChatId, toMessageTopicId, messages, index, size, sendCopy, removeCaption, options, out);
+          addForwardOrCopy(tdlib, toChatId, toMessageTopicId, messages, index, size, sendCopy, removeCaption, options, out, fallbacks);
         }
         fromChatId = message.chatId;
         index = i;
@@ -1839,12 +1885,12 @@ public class TD {
       size++;
     }
     if (size > 0) {
-      addForwardOrCopy(tdlib, toChatId, toMessageTopicId, messages, index, size, sendCopy, removeCaption, options, out);
+      addForwardOrCopy(tdlib, toChatId, toMessageTopicId, messages, index, size, sendCopy, removeCaption, options, out, fallbacks);
     }
     return true;
   }
 
-  private static void addForwardOrCopy (@Nullable Tdlib tdlib, long toChatId, @Nullable TdApi.MessageTopic toMessageTopicId, TdApi.Message[] messages, int index, int size, boolean sendCopy, boolean removeCaption, TdApi.MessageSendOptions options, ArrayList<TdApi.Function<?>> out) {
+  private static void addForwardOrCopy (@Nullable Tdlib tdlib, long toChatId, @Nullable TdApi.MessageTopic toMessageTopicId, TdApi.Message[] messages, int index, int size, boolean sendCopy, boolean removeCaption, TdApi.MessageSendOptions options, ArrayList<TdApi.Function<?>> out, @Nullable Map<TdApi.Function<?>, ForwardFallback> fallbacks) {
     long fromChatId = messages[index].chatId;
     if (isForwardingRestricted(tdlib, fromChatId)) {
       // The server rejects both messages.forwardMessages and re-sending media that
@@ -1858,7 +1904,13 @@ public class TD {
         }
       });
     } else {
-      out.add(new TdApi.ForwardMessages(toChatId, toMessageTopicId, fromChatId, getMessageIds(messages, index, size), options, sendCopy, removeCaption));
+      TdApi.ForwardMessages function = new TdApi.ForwardMessages(toChatId, toMessageTopicId, fromChatId, getMessageIds(messages, index, size), options, sendCopy, removeCaption);
+      out.add(function);
+      if (fallbacks != null) {
+        TdApi.Message[] run = new TdApi.Message[size];
+        System.arraycopy(messages, index, run, 0, size);
+        fallbacks.put(function, new ForwardFallback(toChatId, toMessageTopicId, options, run));
+      }
     }
   }
 

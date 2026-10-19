@@ -78,6 +78,7 @@ import org.thunderdog.challegram.navigation.ViewController;
 import org.thunderdog.challegram.support.RippleSupport;
 import org.thunderdog.challegram.support.ViewSupport;
 import org.thunderdog.challegram.telegram.ChatListListener;
+import org.thunderdog.challegram.telegram.ContentCopySender;
 import org.thunderdog.challegram.telegram.RightId;
 import org.thunderdog.challegram.telegram.TGLegacyManager;
 import org.thunderdog.challegram.telegram.Tdlib;
@@ -3379,6 +3380,9 @@ public class ShareController extends TelegramViewController<ShareController.Args
     }
 
     final ArrayList<TdApi.Function<?>> functions = new ArrayList<>();
+    // Filled by TD.forwardMessages: allows a server-side rejection to be retried as
+    // "download + re-upload" instead of failing the whole share.
+    final Map<TdApi.Function<?>, TD.ForwardFallback> forwardFallbacks = new HashMap<>();
     final TdApi.FormattedText comment = inputView.getOutputText(true);
 
     //noinspection UnsafeOptInUsageError
@@ -3446,7 +3450,7 @@ public class ShareController extends TelegramViewController<ShareController.Args
           break;
         }
         case MODE_MESSAGES: {
-          if (!messageReplyIncluded && !TD.forwardMessages(tdlib, chatId, null, args.messages, needHideAuthor, needRemoveCaptions, sendOptions, functions))
+          if (!messageReplyIncluded && !TD.forwardMessages(tdlib, chatId, null, args.messages, needHideAuthor, needRemoveCaptions, sendOptions, functions, forwardFallbacks))
             return;
           break;
         }
@@ -3507,11 +3511,11 @@ public class ShareController extends TelegramViewController<ShareController.Args
     }
 
     if (functions.size() == 1) {
-      tdlib.client().send(functions.get(0), tdlib.messageHandler());
+      sendShareFunction(functions.get(0), forwardFallbacks);
     } else {
       tdlib.runOnTdlibThread(() -> {
         for (TdApi.Function<?> function : functions) {
-          tdlib.client().send(function, tdlib.messageHandler());
+          sendShareFunction(function, forwardFallbacks);
         }
       });
     }
@@ -3530,6 +3534,32 @@ public class ShareController extends TelegramViewController<ShareController.Args
     }
 
     popupLayout.hideWindow(true);
+  }
+
+  /**
+   * Sends a prepared function. If the server still rejects the forward because the
+   * source chat protects its content — the local `hasProtectedContent` flag is not
+   * reliable, it can be stale or missing — the same messages are re-published through
+   * {@link ContentCopySender}, which downloads them and uploads them back as brand new
+   * messages. That path is accepted by the server, so the user keeps the content.
+   */
+  private void sendShareFunction (TdApi.Function<?> function, Map<TdApi.Function<?>, TD.ForwardFallback> forwardFallbacks) {
+    final TD.ForwardFallback fallback = forwardFallbacks.get(function);
+    if (fallback == null) {
+      tdlib.client().send(function, tdlib.messageHandler());
+      return;
+    }
+    tdlib.client().send(function, object -> {
+      if (object instanceof TdApi.Error && TD.isForwardsRestricted((TdApi.Error) object)) {
+        ContentCopySender.send(tdlib, fallback.toChatId, fallback.topicId, fallback.messages, needRemoveCaptions, fallback.options, (sent, error) -> {
+          if (error != null) {
+            UI.showError(error);
+          }
+        });
+        return;
+      }
+      tdlib.messageHandler().onResult(object);
+    });
   }
 
   private void onSent () {

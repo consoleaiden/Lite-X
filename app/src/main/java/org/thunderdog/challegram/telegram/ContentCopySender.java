@@ -10,12 +10,22 @@
 
 package org.thunderdog.challegram.telegram;
 
+import android.os.Build;
+
 import androidx.annotation.Nullable;
 
 import org.drinkless.tdlib.TdApi;
+import org.thunderdog.challegram.Log;
+import org.thunderdog.challegram.core.Background;
 import org.thunderdog.challegram.data.TD;
 import org.thunderdog.challegram.tool.UI;
 
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -67,6 +77,9 @@ public final class ContentCopySender {
     private int index;
     private int sent;
     private boolean finished;
+
+    private final List<String> createdFiles = new ArrayList<>();
+    private int stagingCounter;
 
     Session (Tdlib tdlib, long toChatId, @Nullable TdApi.MessageTopic topicId, TdApi.Message[] messages, boolean removeCaption, TdApi.MessageSendOptions options, @Nullable Callback callback) {
       this.tdlib = tdlib;
@@ -198,7 +211,7 @@ public final class ContentCopySender {
 
     private void ensureDownloaded (TdApi.File file, PathCallback callback) {
       if (TD.isFileLoadedAndExists(file)) {
-        callback.onReady(file.local.path);
+        deliverUploadablePath(file.local.path, callback);
         return;
       }
       // Asynchronous on purpose: a synchronous DownloadFile parks TDLib's whole
@@ -229,7 +242,7 @@ public final class ContentCopySender {
           return;
         }
         if (file != null && file.local != null && file.local.isDownloadingCompleted && file.local.path != null && !file.local.path.isEmpty()) {
-          callback.onReady(file.local.path);
+          deliverUploadablePath(file.local.path, callback);
           return;
         }
         if (attempt >= DOWNLOAD_POLL_MAX) {
@@ -240,13 +253,102 @@ public final class ContentCopySender {
       });
     }
 
+    /**
+     * TDLib indexes local files by path and remembers the remote file id that was
+     * once bound to that path. Handing over the very file TDLib downloaded from a
+     * protected chat therefore makes it reuse the original remote id, and the
+     * server rejects the message with CHAT_FORWARDS_RESTRICTED — exactly as if we
+     * had sent InputFileId. Presenting the same bytes under a path TDLib has never
+     * seen forces a genuine upload, which the server accepts.
+     */
+    private void deliverUploadablePath (String sourcePath, PathCallback callback) {
+      final File source = new File(sourcePath);
+      if (!source.isFile()) {
+        callback.onReady(sourcePath);
+        return;
+      }
+      Background.instance().post(() -> {
+        String staged = null;
+        File dir = new File(UI.getContext().getCacheDir(), "reupload");
+        if (!dir.exists() && !dir.mkdirs() && !dir.exists()) {
+          Log.e("Cannot create staging dir %s", dir);
+        } else {
+          File target = new File(dir, "upload_" + System.nanoTime() + "_" + (stagingCounter++) + extensionOf(source));
+          if (target.exists()) {
+            //noinspection ResultOfMethodCallIgnored
+            target.delete();
+          }
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            try {
+              // Zero-copy: the same bytes under a path TDLib has no record of.
+              java.nio.file.Files.createLink(target.toPath(), source.toPath());
+              staged = target.getAbsolutePath();
+              createdFiles.add(staged);
+            } catch (Throwable ignored) {
+              // different volume or hard links unsupported: fall through to copy
+            }
+          }
+          if (staged == null) {
+            try {
+              copyFile(source, target);
+              staged = target.getAbsolutePath();
+              createdFiles.add(staged);
+            } catch (Throwable t) {
+              Log.e("Cannot stage %s for re-upload", t, sourcePath);
+            }
+          }
+        }
+        final String readyPath = staged != null ? staged : sourcePath;
+        UI.post(() -> {
+          if (!finished) {
+            callback.onReady(readyPath);
+          }
+        });
+      });
+    }
+
+    private static String extensionOf (File file) {
+      String name = file.getName();
+      int dot = name.lastIndexOf('.');
+      return dot > 0 && dot < name.length() - 1 ? name.substring(dot) : "";
+    }
+
+    private static void copyFile (File source, File target) throws IOException {
+      try (InputStream in = new FileInputStream(source); OutputStream out = new FileOutputStream(target)) {
+        byte[] buffer = new byte[64 * 1024];
+        int read;
+        while ((read = in.read(buffer)) != -1) {
+          out.write(buffer, 0, read);
+        }
+        out.flush();
+      }
+    }
+
+    private void scheduleCleanup () {
+      if (createdFiles.isEmpty()) {
+        return;
+      }
+      final List<String> files = new ArrayList<>(createdFiles);
+      createdFiles.clear();
+      // Uploads are done by now, but TDLib may still hold the file briefly: wait.
+      UI.post(() -> Background.instance().post(() -> {
+        for (String path : files) {
+          //noinspection ResultOfMethodCallIgnored
+          new File(path).delete();
+        }
+      }), 60_000L);
+    }
+
     private void finish (@Nullable TdApi.Error error) {
       if (finished) {
         return;
       }
       finished = true;
+      scheduleCleanup();
       if (callback != null) {
-        callback.onFinished(sent, error);
+        // "[copy]" tells a download+re-upload failure apart from a plain forward
+        // failure when a bug report comes in.
+        callback.onFinished(sent, error != null ? new TdApi.Error(error.code, (error.message != null ? error.message : "") + " [copy]") : null);
       }
     }
   }
