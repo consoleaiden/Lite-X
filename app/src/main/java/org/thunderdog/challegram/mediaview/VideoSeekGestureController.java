@@ -394,7 +394,7 @@ public class VideoSeekGestureController {
     final float boxHeight = Screen.dp(20f) * 1.6f + paddingV * 2f;
 
     final float cx = width / 2f;
-    final float cy = height / 2f - Screen.dp(40f);
+    final float cy = height * .5f - Screen.dp(20f);
     previewRect.set(cx - boxWidth / 2f, cy - boxHeight / 2f, cx + boxWidth / 2f, cy + boxHeight / 2f);
 
     c.drawRoundRect(previewRect, Screen.dp(12f), Screen.dp(12f), Paints.fillingPaint(0xb4000000));

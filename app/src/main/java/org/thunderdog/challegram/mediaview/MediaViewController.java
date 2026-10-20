@@ -3564,29 +3564,27 @@ public class MediaViewController extends ViewController<MediaViewController.Args
   /** Height of the timeline / play button strip, see {@link VideoControlView}. */
   private static final int BOTTOM_CONTROLS_HEIGHT_DP = 56;
 
-  private final int[] bottomControlLocation = new int[2];
-
   /**
-   * Hit test for the controls that live in {@code bottomWrap} (timeline, play/pause,
-   * trim handle). The seek overlay is the topmost child of {@code contentView} and
-   * therefore covers them, so it has to step aside explicitly for those touches,
-   * otherwise it would break the existing slider interaction.
+   * Keeps the seek overlay's height so it stops above the timeline / play button strip.
+   * The overlay must be the topmost child of {@code contentView} to receive the gesture,
+   * but it must not cover {@code bottomWrap}: the timeline slider and the trim handles
+   * live there and are the original way to seek. Insulating them by geometry is far more
+   * reliable than hit-testing every control that can appear in that container.
    */
-  private boolean isTouchOnBottomControls (float rawX, float rawY) {
-    if (videoSliderView == null || videoSliderView.getVisibility() != View.VISIBLE) {
-      return false;
+  private void updateSeekOverlayLayout () {
+    if (seekOverlayView == null) {
+      return;
     }
-    float innerAlpha = videoSliderView.getInnerAlpha();
-    if (innerAlpha <= 0.05f) {
-      // Slider is hidden (picture-in-picture / photo): nothing to protect.
-      return false;
+    int height = contentView.getHeight();
+    if (height <= 0) {
+      return;
     }
-    int[] location = bottomControlLocation;
-    videoSliderView.getLocationOnScreen(location);
-    int stripHeight = (int) (Screen.dp(BOTTOM_CONTROLS_HEIGHT_DP) * videoSliderView.getScaleY());
-    float stripTop = location[1] + videoSliderView.getHeight() - stripHeight + videoSliderView.getTranslationY();
-    return rawY >= stripTop && rawY <= location[1] + videoSliderView.getHeight()
-      && rawX >= location[0] && rawX <= location[0] + videoSliderView.getWidth();
+    int overlayHeight = Math.max(0, height - Screen.dp(BOTTOM_CONTROLS_HEIGHT_DP));
+    ViewGroup.LayoutParams params = seekOverlayView.getLayoutParams();
+    if (params != null && params.height != overlayHeight) {
+      params.height = overlayHeight;
+      seekOverlayView.setLayoutParams(params);
+    }
   }
 
   private void updateSeekOverlayVisibility () {
@@ -9551,13 +9549,6 @@ public class MediaViewController extends ViewController<MediaViewController.Args
             setShowOtherMedias(false);
             return true;
           }
-          // The overlay is the topmost child of contentView, so it also covers the
-          // timeline / play button strip in bottomWrap. Any touch that lands on a live
-          // control there must reach it untouched: otherwise the progress slider and the
-          // playback buttons would stop responding.
-          if (isTouchOnBottomControls(event.getRawX(), event.getRawY())) {
-            return false;
-          }
           if (seekGesture != null) {
             seekGesture.showTimeLabel(false);
             removeCallbacks(seekTimeLabelExpiry);
@@ -9572,6 +9563,13 @@ public class MediaViewController extends ViewController<MediaViewController.Args
       }
 
       @Override
+      protected void onSizeChanged (int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        // contentView may have been measured after the overlay was attached.
+        updateSeekOverlayLayout();
+      }
+
+      @Override
       protected void onDraw (Canvas c) {
         super.onDraw(c);
         if (seekGesture != null) {
@@ -9579,7 +9577,8 @@ public class MediaViewController extends ViewController<MediaViewController.Args
         }
       }
     };
-    seekOverlayView.setLayoutParams(FrameLayoutFix.newParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    // Full width, but only down to the top of the bottom control strip.
+    seekOverlayView.setLayoutParams(FrameLayoutFix.newParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP));
     seekOverlayView.setWillNotDraw(false);
     seekOverlayView.setVisibility(View.GONE);
     getSeekGesture();
@@ -9648,6 +9647,7 @@ public class MediaViewController extends ViewController<MediaViewController.Args
     // to receive touches on the video surface.
     contentView.addView(seekOverlayView);
     attachedViews.add(seekOverlayView);
+    updateSeekOverlayLayout();
     updateSeekOverlayVisibility();
 
     return attachedViews;
