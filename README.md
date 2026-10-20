@@ -15,7 +15,7 @@
 | 项 | 值 |
 | --- | --- |
 | 应用名 | **Lite X**（仓库 Variables `APP_NAME`） |
-| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1825` → **1825000** |
+| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1826` → **1826000** |
 | flavor / ABI | `marshmallow`（minSdk 23）+ `arm64-v8a` / `armeabi-v7a` |
 | 构建方式 | GitHub Actions `.github/workflows/build-apk.yml`（`workflow_dispatch`），约 22 分钟 |
 | 应用内更新 | 读本仓库 `/releases/latest` |
@@ -103,6 +103,15 @@
 - `ChannelCloner` 增加可选快路径：开启机器人中转时先逐条 `copyMessage`，被拒的消息收集起来再走 `ContentCopySender`。
 - `cloudflare/`：`worker.js`（`/api/copy`、`/api/clone`、`/api/health`、`/webhook`）+ `wrangler.toml` + 部署说明。Worker 只有 Bot API 能力，**跑不了 user session**，因此禁止转发的核心突破仍在客户端完成。
 - 已部署实例：`https://lite-x-relay.84339075.workers.dev`（密钥 `BOT_TOKEN`、`RELAY_SECRET` 已配）。App 的「服务地址」默认预填该地址；**口令不进仓库**（仓库与 Release 的 APK 都公开，硬编码等于把 bot 配额送给所有人），需在 App 里粘一次。
+
+### 12. 视频画面横向滑动快进/快退（1826）
+- 新增 `mediaview/VideoSeekGestureController`：纯手势状态机，不改播放器内部逻辑。状态 `NONE → SEEKING / SPEED_UP / PENDING`。
+- 挂载：`MediaViewController` 在 `bottomWrap` 之后加一层全屏透明 `seekOverlayView`（仅 `videoFactor > 0 && commonFactor == 0 && pipFactor == 0` 且当前是视频时 `VISIBLE`，否则 `GONE`），触摸与预览浮层绘制都走它。
+- 手势仲裁：`ACTION_DOWN` **永不消费**（点击/播放暂停、返回手势照常）；越过 `max(touchSlop, 12dp)` 时若 `|dx| > |dy| * 1.15` 才判定为横向并锁定，否则标记 `PENDING` 永久放手（纵向音量/亮度、翻页不受影响）。多点触控直接取消。
+- 灵敏度：**一屏宽 ≈ 整个视频时长**（`SENSITIVITY_FACTOR = 1.0`），对任意时长手感一致；边界 `Math.max(0, Math.min(duration, target))`。
+- 预览优先：拖动期间只调 `videoSliderView.updateSeek` + 重绘浮层（`时间 / 总时长` + 进度细条），**不 seek 播放器**；`ACTION_UP` 才 `mediaView.setSeekProgress(progress)` 一次落点。
+- 暂停恢复：若拖动期间播放器自己暂停（`onPlayPause(false)` 且正在 `SEEKING`），记下 `seekPausedPlayback`，松手跳转后自动恢复播放。
+- 长按（450ms 不动）进入 `SPEED_UP`，松手结束；移动立即取消。
 
 ---
 

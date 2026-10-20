@@ -1121,6 +1121,7 @@ public class MediaViewController extends ViewController<MediaViewController.Args
       contentView.setWillNotDraw(factor == 0f);
       contentView.invalidate();
       checkThumbsItemAnimator();
+      updateSeekOverlayVisibility();
     }
   }
 
@@ -2728,6 +2729,8 @@ public class MediaViewController extends ViewController<MediaViewController.Args
 
       this.pipFactor = factor;
 
+      updateSeekOverlayVisibility();
+
       updatePipLayout(mediaView.getMeasuredWidth(), mediaView.getMeasuredHeight(), false, false);
 
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && !Config.DISABLE_VIEWER_ELEVATION) {
@@ -3166,6 +3169,91 @@ public class MediaViewController extends ViewController<MediaViewController.Args
   private ImageView captionEmojiButton, captionDoneButton;
   private @Nullable VideoControlView videoSliderView;
 
+  private @Nullable View seekOverlayView;
+  private @Nullable VideoSeekGestureController seekGesture;
+  private boolean seekPausedPlayback;
+
+  private VideoSeekGestureController getSeekGesture () {
+    if (seekGesture == null) {
+      seekGesture = new VideoSeekGestureController(new VideoSeekGestureController.Delegate() {
+        @Override
+        public long getPositionMs () {
+          MediaCellView cellView = mediaView != null && stack != null && stack.getCurrent() != null ? mediaView.findCellForItem(stack.getCurrent()) : null;
+          long now = cellView != null ? cellView.getTimeNow() : -1;
+          return Math.max(0, now);
+        }
+
+        @Override
+        public long getDurationMs () {
+          MediaCellView cellView = mediaView != null && stack != null && stack.getCurrent() != null ? mediaView.findCellForItem(stack.getCurrent()) : null;
+          long total = cellView != null ? cellView.getTimeTotal() : -1;
+          return Math.max(0, total);
+        }
+
+        @Override
+        public boolean canSeek () {
+          if (stack == null || stack.getCurrent() == null || commonFactor >= 1f || pipFactor > 0f) {
+            return false;
+          }
+          MediaItem item = stack.getCurrent();
+          return item.isVideoOrGif() && item.canSeekVideo() && getDurationMs() > 0;
+        }
+
+        @Override
+        public void onSeekPreview (long targetPositionMs) {
+          long total = getDurationMs();
+          if (total > 0 && videoSliderView != null) {
+            videoSliderView.updateSeek(targetPositionMs, total, (float) ((double) targetPositionMs / (double) total));
+          }
+          if (seekOverlayView != null) {
+            seekOverlayView.invalidate();
+          }
+        }
+
+        @Override
+        public void onSeekPreviewCancelled () {
+          if (seekOverlayView != null) {
+            seekOverlayView.invalidate();
+          }
+        }
+
+        @Override
+        public void onSeekCommit (long targetPositionMs) {
+          long total = getDurationMs();
+          if (total > 0 && mediaView != null) {
+            mediaView.setSeekProgress((float) ((double) targetPositionMs / (double) total));
+            if (videoSliderView != null) {
+              videoSliderView.updateSeek(targetPositionMs, total, (float) ((double) targetPositionMs / (double) total));
+            }
+          }
+          if (seekPausedPlayback) {
+            seekPausedPlayback = false;
+            if (stack != null && stack.getCurrent() != null) {
+              stack.getCurrent().performClick(pipPlayPauseButton);
+            }
+          }
+          if (seekOverlayView != null) {
+            seekOverlayView.invalidate();
+          }
+        }
+
+        @Override
+        public void onSpeedUpStart () {
+          // Press-and-hold without moving: keep the current speed, no seek is pending.
+          seekPausedPlayback = false;
+        }
+
+        @Override
+        public void onSpeedUpEnd () {
+          if (seekOverlayView != null) {
+            seekOverlayView.invalidate();
+          }
+        }
+      });
+    }
+    return seekGesture;
+  }
+
   private SecretTimerView secretView;
 
   private CheckView checkView;
@@ -3380,7 +3468,21 @@ public class MediaViewController extends ViewController<MediaViewController.Args
         videoSliderView.setInnerAlpha(factor);
         updateBottomSpaceAlpha();
       }
+      updateSeekOverlayVisibility();
     }
+  }
+
+  /**
+   * The seek overlay sits above the video cell and swallows horizontal drags, so it
+   * must only accept touches while this media item actually owns the screen: not while
+   * the pager is mid-swipe, not in picture-in-picture, not for a photo.
+   */
+  private void updateSeekOverlayVisibility () {
+    if (seekOverlayView == null) {
+      return;
+    }
+    boolean usable = commonFactor == 0f && pipFactor == 0f && videoFactor > 0f && stack != null && stack.getCurrent() != null && stack.getCurrent().isVideoOrGif();
+    seekOverlayView.setVisibility(usable ? View.VISIBLE : View.GONE);
   }
 
   private void forceVideoFactor (float factor) {
@@ -3442,6 +3544,11 @@ public class MediaViewController extends ViewController<MediaViewController.Args
     }
     if (videoSliderView != null) {
       videoSliderView.setIsPlaying(isPlaying, videoFactor > 0f);
+    }
+    if (!isPlaying && seekGesture != null && seekGesture.isSeeking()) {
+      // The player paused itself while we were only previewing a seek target: the
+      // user is still dragging, so remember to resume playback once the finger lifts.
+      seekPausedPlayback = true;
     }
     isPlayingVideo = isPlaying;
     switch (mode) {
@@ -9301,6 +9408,37 @@ public class MediaViewController extends ViewController<MediaViewController.Args
 
     contentView.addView(bottomWrap);
     attachedViews.add(bottomWrap);
+
+    // Horizontal swipe on the video surface to seek (preview while dragging, commit on
+    // release). Full-size but only ever claims the gesture once it is clearly
+    // horizontal, so clicks, vertical gestures and the pager keep working untouched.
+    seekOverlayView = new View(context) {
+      @Override
+      public boolean onTouchEvent (MotionEvent event) {
+        if (seekGesture == null) {
+          getSeekGesture();
+        }
+        boolean handled = seekGesture.onTouchEvent(event);
+        if (handled) {
+          invalidate();
+        }
+        return handled;
+      }
+
+      @Override
+      protected void onDraw (Canvas c) {
+        super.onDraw(c);
+        if (seekGesture != null) {
+          seekGesture.draw(c, getMeasuredWidth(), getMeasuredHeight());
+        }
+      }
+    };
+    seekOverlayView.setLayoutParams(FrameLayoutFix.newParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    seekOverlayView.setWillNotDraw(false);
+    seekOverlayView.setVisibility(View.GONE);
+    contentView.addView(seekOverlayView);
+    attachedViews.add(seekOverlayView);
+    getSeekGesture();
 
     // Image overlay
 
