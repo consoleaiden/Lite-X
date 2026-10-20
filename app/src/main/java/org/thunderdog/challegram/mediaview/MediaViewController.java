@@ -1478,6 +1478,20 @@ public class MediaViewController extends ViewController<MediaViewController.Args
   private void updateVideoState (boolean animated) {
     MediaItem item = stack.getCurrent();
     setVideoVisible(item.isVideo(), Config.VIDEO_CLOUD_PLAYBACK_AVAILABLE || item.isLoaded(), item.getVideoDuration(true, TimeUnit.MILLISECONDS), TimeUnit.MILLISECONDS, animated);
+    if (seekGesture != null) {
+      // Seed the "current / total" values straight away so the label is correct even
+      // before the first progress callback of the newly selected item arrives.
+      MediaCellView cellView = mediaView != null ? mediaView.findCellForItem(item) : null;
+      long now = cellView != null ? cellView.getTimeNow() : -1;
+      long total = cellView != null ? cellView.getTimeTotal() : -1;
+      if (total <= 0) {
+        total = item.getVideoDuration(true, TimeUnit.MILLISECONDS);
+        now = 0;
+      }
+      seekGesture.onPlaybackProgress(Math.max(0, now), Math.max(0, total), isPlayingVideo);
+      seekGesture.hideTimeLabel();
+    }
+    updateSeekOverlayVisibility();
     if (mode == MODE_GALLERY) {
       boolean isVideo = item.isVideo();
       if (isVideo) {
@@ -3173,6 +3187,14 @@ public class MediaViewController extends ViewController<MediaViewController.Args
   private @Nullable VideoSeekGestureController seekGesture;
   private boolean seekPausedPlayback;
 
+  /** Repaints the overlay once the time label has expired, so it actually disappears. */
+  private final Runnable seekTimeLabelExpiry = () -> {
+    if (seekOverlayView != null) {
+      seekOverlayView.invalidate();
+    }
+    updateSeekOverlayVisibility();
+  };
+
   private VideoSeekGestureController getSeekGesture () {
     if (seekGesture == null) {
       seekGesture = new VideoSeekGestureController(new VideoSeekGestureController.Delegate() {
@@ -3197,6 +3219,51 @@ public class MediaViewController extends ViewController<MediaViewController.Args
           }
           MediaItem item = stack.getCurrent();
           return item.isVideoOrGif() && item.canSeekVideo() && getDurationMs() > 0;
+        }
+
+        @Override
+        public void invalidateOverlay () {
+          if (seekOverlayView != null) {
+            seekOverlayView.invalidate();
+          }
+        }
+
+        @Override
+        public void onTap () {
+          MediaItem item = stack != null ? stack.getCurrent() : null;
+          if (item == null) {
+            return;
+          }
+          // Flash the time label: when the player is paused nothing else would tell the
+          // user that the tap registered.
+          if (seekOverlayView != null && seekGesture != null) {
+            seekGesture.showTimeLabel(false);
+            seekOverlayView.invalidate();
+            seekOverlayView.removeCallbacks(seekTimeLabelExpiry);
+            seekOverlayView.postDelayed(seekTimeLabelExpiry, 2700L);
+          }
+          // The overlay covers the video cell, so the tap can no longer reach
+          // MediaCellView.onClick(); replay it there so play/pause keeps working with
+          // exactly the same semantics as before.
+          MediaCellView cellView = mediaView != null ? mediaView.findCellForItem(item) : null;
+          if (cellView == null || !cellView.togglePlayPauseFromSurface()) {
+            item.performClick(videoSliderView != null ? videoSliderView : pipPlayPauseButton);
+          }
+        }
+
+        @Override
+        public void onPageFling (float deltaX) {
+          // Only reached when the drag was horizontal but seeking is not available yet
+          // (e.g. the video is still buffering). Replay it as a page swipe so the
+          // gesture is not silently swallowed.
+          if (mediaView == null || mediaView.inSingleMode()) {
+            return;
+          }
+          boolean rtl = Lang.rtl();
+          boolean next = rtl ? deltaX > 0 : deltaX < 0;
+          if (next ? mediaView.hasNext() : mediaView.hasPrevious()) {
+            mediaView.dropPreview(next ? MediaView.DIRECTION_FORWARD : MediaView.DIRECTION_BACKWARD, 1f);
+          }
         }
 
         @Override
@@ -3364,8 +3431,12 @@ public class MediaViewController extends ViewController<MediaViewController.Args
   private void setVideoVisible (boolean isVisible, boolean isLoaded, long duration, TimeUnit unit, boolean animated) {
     if (videoSliderView != null) {
       MediaCellView cellView = mediaView != null ? mediaView.findCellForItem(stack.getCurrent()) : null;
-      if (this.videoVisible != isVisible) {
-        this.videoVisible = isVisible;
+      final boolean changed = this.videoVisible != isVisible;
+      this.videoVisible = isVisible;
+      // Runs on every item change, including video -> video where the flag stays true,
+      // so the overlay follows the currently selected item.
+      updateSeekOverlayVisibility();
+      if (changed) {
         if (isVisible) {
           long timeNow, timeTotal;
           if (isLoaded && cellView != null) {
@@ -3476,13 +3547,64 @@ public class MediaViewController extends ViewController<MediaViewController.Args
    * The seek overlay sits above the video cell and swallows horizontal drags, so it
    * must only accept touches while this media item actually owns the screen: not while
    * the pager is mid-swipe, not in picture-in-picture, not for a photo.
+   *
+   * The check deliberately uses {@link #videoVisible} (set by {@link #setVideoVisible}
+   * whenever the current item changes) instead of {@code videoFactor}: the factor is an
+   * animation progress value that can legitimately be 0 while a video is on screen, and
+   * gating on it would leave the overlay permanently GONE.
    */
+  /**
+   * Hit test for the controls that live in {@code bottomWrap} (timeline, play/pause,
+   * trim handle). The seek overlay covers them, so it has to step aside for those
+   * touches explicitly, otherwise it would break the existing slider interaction.
+   *
+   * @param rawX screen-space x of the touch
+   * @param rawY screen-space y of the touch
+   */
+  /** Height of the timeline / play button strip, see {@link VideoControlView}. */
+  private static final int BOTTOM_CONTROLS_HEIGHT_DP = 56;
+
+  private final int[] bottomControlLocation = new int[2];
+
+  /**
+   * Hit test for the controls that live in {@code bottomWrap} (timeline, play/pause,
+   * trim handle). The seek overlay is the topmost child of {@code contentView} and
+   * therefore covers them, so it has to step aside explicitly for those touches,
+   * otherwise it would break the existing slider interaction.
+   */
+  private boolean isTouchOnBottomControls (float rawX, float rawY) {
+    if (videoSliderView == null || videoSliderView.getVisibility() != View.VISIBLE) {
+      return false;
+    }
+    float innerAlpha = videoSliderView.getInnerAlpha();
+    if (innerAlpha <= 0.05f) {
+      // Slider is hidden (picture-in-picture / photo): nothing to protect.
+      return false;
+    }
+    int[] location = bottomControlLocation;
+    videoSliderView.getLocationOnScreen(location);
+    int stripHeight = (int) (Screen.dp(BOTTOM_CONTROLS_HEIGHT_DP) * videoSliderView.getScaleY());
+    float stripTop = location[1] + videoSliderView.getHeight() - stripHeight + videoSliderView.getTranslationY();
+    return rawY >= stripTop && rawY <= location[1] + videoSliderView.getHeight()
+      && rawX >= location[0] && rawX <= location[0] + videoSliderView.getWidth();
+  }
+
   private void updateSeekOverlayVisibility () {
     if (seekOverlayView == null) {
       return;
     }
-    boolean usable = commonFactor == 0f && pipFactor == 0f && videoFactor > 0f && stack != null && stack.getCurrent() != null && stack.getCurrent().isVideoOrGif();
-    seekOverlayView.setVisibility(usable ? View.VISIBLE : View.GONE);
+    MediaItem current = stack != null ? stack.getCurrent() : null;
+    boolean usable =
+      current != null &&
+      mode != MODE_SECRET &&
+      commonFactor == 0f &&
+      pipFactor == 0f &&
+      current.isVideoOrGif() &&
+      videoVisible;
+    int visibility = usable ? View.VISIBLE : View.GONE;
+    if (seekOverlayView.getVisibility() != visibility) {
+      seekOverlayView.setVisibility(visibility);
+    }
   }
 
   private void forceVideoFactor (float factor) {
@@ -3527,6 +3649,12 @@ public class MediaViewController extends ViewController<MediaViewController.Args
   public void onSeekProgress (MediaItem item, long nowMs, long durationMs, float progress) {
     if (stack.getCurrent() == item && videoSliderView != null) {
       videoSliderView.updateSeek(nowMs, durationMs, progress);
+    }
+    if (stack.getCurrent() == item && seekGesture != null) {
+      seekGesture.onPlaybackProgress(nowMs, durationMs, isPlayingVideo);
+      if (seekGesture.shouldDrawTimeLabel() && seekOverlayView != null) {
+        seekOverlayView.invalidate();
+      }
     }
   }
 
@@ -9410,19 +9538,37 @@ public class MediaViewController extends ViewController<MediaViewController.Args
     attachedViews.add(bottomWrap);
 
     // Horizontal swipe on the video surface to seek (preview while dragging, commit on
-    // release). Full-size but only ever claims the gesture once it is clearly
-    // horizontal, so clicks, vertical gestures and the pager keep working untouched.
+    // release), plus tap-to-pause. This view is attached last on purpose: it has to sit
+    // above overlayView / checkView / receiverView, otherwise those (also full size)
+    // views would receive the touch stream first and the gesture would never arrive.
     seekOverlayView = new View(context) {
       @Override
       public boolean onTouchEvent (MotionEvent event) {
+        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+          // Tapping the dimmed gallery background dismisses it; that state is owned by
+          // overlayView below us, so forward the decision instead of swallowing the tap.
+          if (showOtherMedias) {
+            setShowOtherMedias(false);
+            return true;
+          }
+          // The overlay is the topmost child of contentView, so it also covers the
+          // timeline / play button strip in bottomWrap. Any touch that lands on a live
+          // control there must reach it untouched: otherwise the progress slider and the
+          // playback buttons would stop responding.
+          if (isTouchOnBottomControls(event.getRawX(), event.getRawY())) {
+            return false;
+          }
+          if (seekGesture != null) {
+            seekGesture.showTimeLabel(false);
+            removeCallbacks(seekTimeLabelExpiry);
+            postDelayed(seekTimeLabelExpiry, 2700L);
+            invalidate();
+          }
+        }
         if (seekGesture == null) {
           getSeekGesture();
         }
-        boolean handled = seekGesture.onTouchEvent(event);
-        if (handled) {
-          invalidate();
-        }
-        return handled;
+        return seekGesture.onTouchEvent(event);
       }
 
       @Override
@@ -9436,8 +9582,6 @@ public class MediaViewController extends ViewController<MediaViewController.Args
     seekOverlayView.setLayoutParams(FrameLayoutFix.newParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
     seekOverlayView.setWillNotDraw(false);
     seekOverlayView.setVisibility(View.GONE);
-    contentView.addView(seekOverlayView);
-    attachedViews.add(seekOverlayView);
     getSeekGesture();
 
     // Image overlay
@@ -9499,6 +9643,13 @@ public class MediaViewController extends ViewController<MediaViewController.Args
       contentView.addView(receiverView);
       attachedViews.add(receiverView);
     }
+
+    // Added last so it is the topmost child of contentView and therefore the first view
+    // to receive touches on the video surface.
+    contentView.addView(seekOverlayView);
+    attachedViews.add(seekOverlayView);
+    updateSeekOverlayVisibility();
+
     return attachedViews;
   }
 

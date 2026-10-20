@@ -1945,6 +1945,36 @@ public class MediaCellView extends ViewGroup implements
     return false;
   }
 
+  /**
+   * Tap on the video surface: start playback if the static preview is still showing,
+   * otherwise toggle play/pause. Mirrors what {@link #onClick} does for the play button
+   * so that tapping anywhere on the video behaves like tapping the button.
+   *
+   * @return {@code true} when the tap was consumed by the player.
+   */
+  public boolean togglePlayPauseFromSurface () {
+    if (media == null || !media.isVideo()) {
+      return false;
+    }
+    if (!Config.VIDEO_CLOUD_PLAYBACK_AVAILABLE && !media.isLoaded()) {
+      return false;
+    }
+    if (!Config.VIDEO_PLAYER_AVAILABLE) {
+      return false;
+    }
+    if (!hideStaticView) {
+      // The player view has not been attached yet: first tap starts playback, exactly
+      // like tapping the big play button on the static preview.
+      setHideStaticView(true, true);
+      return true;
+    }
+    if (playerView == null) {
+      return false;
+    }
+    playerView.playPause();
+    return true;
+  }
+
   private boolean videoReady;
 
   private void setVideoReady (boolean isReady) {
