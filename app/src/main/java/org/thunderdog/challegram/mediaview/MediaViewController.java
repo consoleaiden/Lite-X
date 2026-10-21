@@ -3233,6 +3233,11 @@ public class MediaViewController extends ViewController<MediaViewController.Args
           if (stack == null || stack.getCurrent() == null || commonFactor != 1f || pipFactor > 0f) {
             return false;
           }
+          // The user may prefer stock behavior (设置 → 其他 → 滑动快进/倒退 = off),
+          // which hands horizontal drags back to the media pager entirely.
+          if (Settings.instance().getNewSetting(Settings.SETTING_FLAG_DISABLE_VIDEO_SWIPE_SEEK)) {
+            return false;
+          }
           MediaItem item = stack.getCurrent();
           return item.isVideoOrGif() && item.canSeekVideo();
         }
@@ -3734,6 +3739,8 @@ public class MediaViewController extends ViewController<MediaViewController.Args
       // the HUD any earlier would paint it over the reveal / thumbnail animation.
       commonFactor == 1f &&
       pipFactor == 0f &&
+      // Hidden while the swipe-to-seek mode is switched off in settings.
+      !Settings.instance().getNewSetting(Settings.SETTING_FLAG_DISABLE_VIDEO_SWIPE_SEEK) &&
       current.isVideoOrGif() &&
       videoVisible;
     int visibility = usable ? View.VISIBLE : View.GONE;

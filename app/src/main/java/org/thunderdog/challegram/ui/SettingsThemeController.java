@@ -644,8 +644,13 @@ public class SettingsThemeController extends RecyclerViewController<SettingsThem
         items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_toggleNewSetting, 0, R.string.DisableHlsVideo).setLongId(Settings.SETTING_FLAG_FORCE_DISABLE_HLS_VIDEO));
       }
       items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
+      // boolValue = true: the radio is ON when the "disable" flag is NOT set, so the
+      // switch reads as "滑动快进/倒退" enabled by default, matching the feature.
+      items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_toggleNewSetting, 0, R.string.VideoSwipeSeek).setLongId(Settings.SETTING_FLAG_DISABLE_VIDEO_SWIPE_SEEK).setBoolValue(true));
+      items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
       items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_audioCompression, 0, R.string.CompressAudio));
       items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
+      items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.VideoSwipeSeekDesc));
 
       tdlib.getTesterLevel(testerLevel -> runOnUiThreadOptional(() -> {
         boolean needBatman = testerLevel >= Tdlib.TesterLevel.MIN_LEVEL_FOR_BATMAN_EFFECT || Settings.instance().getNewSetting(Settings.SETTING_FLAG_BATMAN_POLL_TRANSITIONS);

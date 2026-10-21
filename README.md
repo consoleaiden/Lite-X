@@ -130,6 +130,17 @@
 - 选择器：`showPlaybackSpeedOptions()` → `showOptions`，列表 `1x(正常) / 1.25x / 1.5x / 1.75x / 2x / 2.5x / 3x`，当前值蓝色 + 对勾图标；回调必须 `return boolean`（否则编译报 `missing return value`）。
 - 应用链路：`MediaViewController.playbackSpeed` → `MediaCellView.setPlaybackSpeed()`（存字段，`setHideStaticView` 挂载播放器时应用）→ `VideoPlayerView.setPlaybackSpeed()` → `ExoPlayer.setPlaybackParameters(PlaybackParameters)`；`1f` 用 `PlaybackParameters.DEFAULT`。
 - 生效范围：整个查看器会话（滑动切到下一个视频由 `onPlayStarted` 重新推一次，避免 cell 复用丢失倍速）；关闭查看器后回到 1x。
+- **流畅度（1830）**：
+  - 音高：>1x 时 `pitch = 0.98f`（与 `TGPlayerController.newPlaybackParameters` 同约定），时间拉伸而非升调，消除"尖叫声"式的音画不同步感；1x 用 `PlaybackParameters.DEFAULT`。
+  - 解码：`DefaultRenderersFactory.setEnableDecoderFallback(true)`，硬解跟不上倍速时自动回落内置软解，减少掉帧与报错退出。
+  - 缓冲：`DefaultLoadControl` 缓冲上限 50s → 120s（起播/重缓冲阈值不变）。2x-3x 下同样时长的缓冲消耗快 2-3 倍，原默认值在网络流上容易断流卡顿。
+  - 音画同步本身由 media3 音频时钟保证，无需也不能手动对齐。
+
+### 14. 视频控制模式可配置（1830）
+- 开关：设置 → 其他 → **滑动快进/倒退**（默认开）。
+- 存储：`Settings.SETTING_FLAG_DISABLE_VIDEO_SWIPE_SEEK = 1 << 21`（`getNewSetting/setNewSetting`，持久化）。
+- UI 复用通用机制：`SettingsThemeController` 里 `btn_toggleNewSetting` + `.setLongId(...)` + `.setBoolValue(true)`（boolValue 取反：开关亮 = 手势可用），点击走 `handleSettingClick`，显示走 `updateSettingView`，均已在 `ViewController` 基类实现。
+- 生效点：`MediaViewController.canSeek()`（关 → 横向拖动完全交还 pager 切换媒体）与 `updateSeekOverlayVisibility()`（关 → 不画时间 HUD）。重新打开查看器即生效，无需重启应用；点按暂停、底部进度条、音量亮度手势不受影响。
 
 ---
 

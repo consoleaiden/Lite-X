@@ -2605,6 +2605,8 @@
   <string name="EditMarkdown">使用 Markdown 编辑</string>
   <string name="ForceBuiltinDecoding">强制使用内置媒体解码</string>
   <string name="DisableHlsVideo">停用 HLS 视频播放</string>
+  <string name="VideoSwipeSeek">滑动快进/倒退</string>
+  <string name="VideoSwipeSeekDesc">在视频画面上左右滑动即可快进或倒退，拖动时仅预览进度，松手后跳转</string>
   <string name="CompressAudio">压缩视频中的语音</string>
   <string name="EditMarkdownHint2">使用传统方式编辑消息中的文字: `**`**bold**`**`, `__`__italic__`__`, `~~`~~strikethrough~~`~~`, ````monospace````, `||`||spoiler||`||`, `[`text`](`url`)`</string>
   <string name="MessageNotFound">该消息不存在</string>
