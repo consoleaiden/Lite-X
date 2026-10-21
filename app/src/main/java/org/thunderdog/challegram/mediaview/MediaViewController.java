@@ -1488,8 +1488,7 @@ public class MediaViewController extends ViewController<MediaViewController.Args
         total = item.getVideoDuration(true, TimeUnit.MILLISECONDS);
         now = 0;
       }
-      seekGesture.onPlaybackProgress(Math.max(0, now), Math.max(0, total), isPlayingVideo);
-      seekGesture.hideTimeLabel();
+      seekGesture.onPlaybackProgress(Math.max(0, now), Math.max(0, total));
     }
     updateSeekOverlayVisibility();
     if (mode == MODE_GALLERY) {
@@ -3187,28 +3186,31 @@ public class MediaViewController extends ViewController<MediaViewController.Args
   private @Nullable VideoSeekGestureController seekGesture;
   private boolean seekPausedPlayback;
 
-  /** Repaints the overlay once the time label has expired, so it actually disappears. */
-  private final Runnable seekTimeLabelExpiry = () -> {
-    if (seekOverlayView != null) {
-      seekOverlayView.invalidate();
-    }
-    updateSeekOverlayVisibility();
-  };
+  // Gesture arbitration state for the horizontal seek. Owned by
+  // contentView.dispatchTouchEvent(), see interceptSeekGesture().
+  private boolean seekTracking;
+  private float seekDownX, seekDownY;
 
   private VideoSeekGestureController getSeekGesture () {
     if (seekGesture == null) {
       seekGesture = new VideoSeekGestureController(new VideoSeekGestureController.Delegate() {
         @Override
         public long getPositionMs () {
-          MediaCellView cellView = mediaView != null && stack != null && stack.getCurrent() != null ? mediaView.findCellForItem(stack.getCurrent()) : null;
+          MediaCellView cellView = findCurrentCellView();
           long now = cellView != null ? cellView.getTimeNow() : -1;
           return Math.max(0, now);
         }
 
         @Override
         public long getDurationMs () {
-          MediaCellView cellView = mediaView != null && stack != null && stack.getCurrent() != null ? mediaView.findCellForItem(stack.getCurrent()) : null;
+          MediaCellView cellView = findCurrentCellView();
           long total = cellView != null ? cellView.getTimeTotal() : -1;
+          if (total <= 0 && stack != null && stack.getCurrent() != null) {
+            // The player may not have reported its duration yet (first seconds of
+            // playback, buffering). Fall back to the duration carried by the message so a
+            // swipe right after opening the video still seeks instead of being ignored.
+            total = stack.getCurrent().getVideoDuration(true, TimeUnit.MILLISECONDS);
+          }
           return Math.max(0, total);
         }
 
@@ -3218,51 +3220,13 @@ public class MediaViewController extends ViewController<MediaViewController.Args
             return false;
           }
           MediaItem item = stack.getCurrent();
-          return item.isVideoOrGif() && item.canSeekVideo() && getDurationMs() > 0;
+          return item.isVideoOrGif() && item.canSeekVideo();
         }
 
         @Override
         public void invalidateOverlay () {
           if (seekOverlayView != null) {
             seekOverlayView.invalidate();
-          }
-        }
-
-        @Override
-        public void onTap () {
-          MediaItem item = stack != null ? stack.getCurrent() : null;
-          if (item == null) {
-            return;
-          }
-          // Flash the time label: when the player is paused nothing else would tell the
-          // user that the tap registered.
-          if (seekOverlayView != null && seekGesture != null) {
-            seekGesture.showTimeLabel(false);
-            seekOverlayView.invalidate();
-            seekOverlayView.removeCallbacks(seekTimeLabelExpiry);
-            seekOverlayView.postDelayed(seekTimeLabelExpiry, 2700L);
-          }
-          // The overlay covers the video cell, so the tap can no longer reach
-          // MediaCellView.onClick(); replay it there so play/pause keeps working with
-          // exactly the same semantics as before.
-          MediaCellView cellView = mediaView != null ? mediaView.findCellForItem(item) : null;
-          if (cellView == null || !cellView.togglePlayPauseFromSurface()) {
-            item.performClick(videoSliderView != null ? videoSliderView : pipPlayPauseButton);
-          }
-        }
-
-        @Override
-        public void onPageFling (float deltaX) {
-          // Only reached when the drag was horizontal but seeking is not available yet
-          // (e.g. the video is still buffering). Replay it as a page swipe so the
-          // gesture is not silently swallowed.
-          if (mediaView == null || mediaView.inSingleMode()) {
-            return;
-          }
-          boolean rtl = Lang.rtl();
-          boolean next = rtl ? deltaX > 0 : deltaX < 0;
-          if (next ? mediaView.hasNext() : mediaView.hasPrevious()) {
-            mediaView.dropPreview(next ? MediaView.DIRECTION_FORWARD : MediaView.DIRECTION_BACKWARD, 1f);
           }
         }
 
@@ -3278,7 +3242,7 @@ public class MediaViewController extends ViewController<MediaViewController.Args
         }
 
         @Override
-        public void onSeekPreviewCancelled () {
+        public void onSeekCancelled () {
           if (seekOverlayView != null) {
             seekOverlayView.invalidate();
           }
@@ -3303,22 +3267,17 @@ public class MediaViewController extends ViewController<MediaViewController.Args
             seekOverlayView.invalidate();
           }
         }
-
-        @Override
-        public void onSpeedUpStart () {
-          // Press-and-hold without moving: keep the current speed, no seek is pending.
-          seekPausedPlayback = false;
-        }
-
-        @Override
-        public void onSpeedUpEnd () {
-          if (seekOverlayView != null) {
-            seekOverlayView.invalidate();
-          }
-        }
       });
     }
     return seekGesture;
+  }
+
+  private @Nullable MediaCellView findCurrentCellView () {
+    if (mediaView == null || stack == null) {
+      return null;
+    }
+    MediaItem item = stack.getCurrent();
+    return item != null ? mediaView.findCellForItem(item) : null;
   }
 
   private SecretTimerView secretView;
@@ -3553,33 +3512,128 @@ public class MediaViewController extends ViewController<MediaViewController.Args
    * animation progress value that can legitimately be 0 while a video is on screen, and
    * gating on it would leave the overlay permanently GONE.
    */
-  /**
-   * Hit test for the controls that live in {@code bottomWrap} (timeline, play/pause,
-   * trim handle). The seek overlay covers them, so it has to step aside for those
-   * touches explicitly, otherwise it would break the existing slider interaction.
-   *
-   * @param rawX screen-space x of the touch
-   * @param rawY screen-space y of the touch
-   */
   /** Height of the timeline / play button strip, see {@link VideoControlView}. */
   private static final int BOTTOM_CONTROLS_HEIGHT_DP = 56;
 
+  private static final int SEEK_NOT_HANDLED = 0;
+  private static final int SEEK_CLAIMED = 1;
+  private static final int SEEK_CONSUMED = 2;
+
+  /**
+   * How far the timeline strip floats above the bottom edge (navigation bar, caption,
+   * ...). Read from the layout params so it is known before the first layout pass.
+   */
+  private int getBottomControlsMargin () {
+    if (bottomWrap != null && bottomWrap.getLayoutParams() instanceof ViewGroup.MarginLayoutParams) {
+      return Math.max(0, ((ViewGroup.MarginLayoutParams) bottomWrap.getLayoutParams()).bottomMargin);
+    }
+    return 0;
+  }
+
+  /**
+   * True when the point lands on the timeline / play button strip. A seek must not start
+   * there: dragging the slider is the original — and still supported — way to seek.
+   */
+  private boolean isOnBottomControls (float y) {
+    if (videoSliderView == null || videoSliderView.getInnerAlpha() <= 0.05f) {
+      // Controls are hidden, so there is nothing to protect.
+      return false;
+    }
+    int height = contentView != null ? contentView.getHeight() : 0;
+    if (height <= 0) {
+      return false;
+    }
+    return y >= height - getBottomControlsMargin() - Screen.dp(BOTTOM_CONTROLS_HEIGHT_DP);
+  }
+
+  /**
+   * Horizontal seek arbitration, called from {@code contentView.dispatchTouchEvent()} —
+   * the only point that still sees every event after the pager, the gesture detector and
+   * the click handler have each tried to claim it.
+   *
+   * <p>{@code ACTION_DOWN} is never consumed: a click reaches the media cell and a
+   * vertical drag reaches the volume / brightness handler exactly as before this feature
+   * existed. Only once the finger has clearly travelled horizontally is the gesture
+   * claimed; the children then get a synthetic {@code ACTION_CANCEL} so the pager snaps
+   * back instead of switching media.</p>
+   */
+  private int handleSeekTouch (MotionEvent e) {
+    final VideoSeekGestureController gesture = getSeekGesture();
+    switch (e.getActionMasked()) {
+      case MotionEvent.ACTION_DOWN: {
+        seekDownX = e.getX();
+        seekDownY = e.getY();
+        seekTracking = !isOnBottomControls(seekDownY) && gesture.canStartSeek();
+        return SEEK_NOT_HANDLED;
+      }
+      case MotionEvent.ACTION_POINTER_DOWN: {
+        // Second finger: a pinch, not a seek.
+        seekTracking = false;
+        if (gesture.isSeeking()) {
+          gesture.cancelSeek();
+          return SEEK_CONSUMED;
+        }
+        return SEEK_NOT_HANDLED;
+      }
+      case MotionEvent.ACTION_MOVE: {
+        if (gesture.isSeeking()) {
+          gesture.updateSeekTo(e.getX());
+          return SEEK_CONSUMED;
+        }
+        if (!seekTracking || e.getPointerCount() > 1) {
+          seekTracking = false;
+          return SEEK_NOT_HANDLED;
+        }
+        final float dx = e.getX() - seekDownX;
+        final float dy = e.getY() - seekDownY;
+        final float slop = Math.max(Screen.getTouchSlop(), Screen.dp(VideoSeekGestureController.START_SLOP_DP));
+        if (Math.abs(dy) > slop && Math.abs(dy) >= Math.abs(dx) * VideoSeekGestureController.HORIZONTAL_RATIO) {
+          // Clearly vertical (volume / brightness): hand it over for good.
+          seekTracking = false;
+          return SEEK_NOT_HANDLED;
+        }
+        if (Math.abs(dx) > slop && Math.abs(dx) > Math.abs(dy) * VideoSeekGestureController.HORIZONTAL_RATIO) {
+          seekTracking = false;
+          if (gesture.beginSeek(seekDownX, e.getX())) {
+            return SEEK_CLAIMED;
+          }
+        }
+        return SEEK_NOT_HANDLED;
+      }
+      case MotionEvent.ACTION_UP: {
+        seekTracking = false;
+        if (gesture.isSeeking()) {
+          gesture.commitSeek();
+          return SEEK_CONSUMED;
+        }
+        return SEEK_NOT_HANDLED;
+      }
+      case MotionEvent.ACTION_CANCEL: {
+        seekTracking = false;
+        if (gesture.isSeeking()) {
+          gesture.cancelSeek();
+          return SEEK_CONSUMED;
+        }
+        return SEEK_NOT_HANDLED;
+      }
+    }
+    return SEEK_NOT_HANDLED;
+  }
+
   /**
    * Keeps the seek overlay's height so it stops above the timeline / play button strip.
-   * The overlay must be the topmost child of {@code contentView} to receive the gesture,
-   * but it must not cover {@code bottomWrap}: the timeline slider and the trim handles
-   * live there and are the original way to seek. Insulating them by geometry is far more
-   * reliable than hit-testing every control that can appear in that container.
+   * The overlay only paints the HUD, but keeping it off the controls means it can never
+   * obscure them either.
    */
   private void updateSeekOverlayLayout () {
     if (seekOverlayView == null) {
       return;
     }
-    int height = contentView.getHeight();
+    int height = contentView != null ? contentView.getHeight() : 0;
     if (height <= 0) {
       return;
     }
-    int overlayHeight = Math.max(0, height - Screen.dp(BOTTOM_CONTROLS_HEIGHT_DP));
+    int overlayHeight = Math.max(0, height - getBottomControlsMargin() - Screen.dp(BOTTOM_CONTROLS_HEIGHT_DP));
     ViewGroup.LayoutParams params = seekOverlayView.getLayoutParams();
     if (params != null && params.height != overlayHeight) {
       params.height = overlayHeight;
@@ -3603,6 +3657,55 @@ public class MediaViewController extends ViewController<MediaViewController.Args
     if (seekOverlayView.getVisibility() != visibility) {
       seekOverlayView.setVisibility(visibility);
     }
+    if (!usable && seekGesture != null) {
+      // A photo must not keep showing the previous video's timeline.
+      seekGesture.resetPlaybackProgress();
+    }
+  }
+
+  /**
+   * Creates the surface that paints the seek HUD and the always-on "current / total"
+   * label, and attaches it as the topmost child of {@code contentView}.
+   *
+   * <p>It has to be attached for <em>every</em> mode. Opening a video from a chat uses
+   * {@link #MODE_MESSAGES}, which never enters {@code createViewGalleryMode()}; creating
+   * the overlay only there — as the first version did — leaves it non-existent on the one
+   * screen where the feature is actually used.</p>
+   *
+   * <p>The view never handles touches: the gesture is arbitrated in
+   * {@code dispatchTouchEvent()} instead, because a view that returns {@code false} for
+   * {@code ACTION_DOWN} is dropped from the gesture and would never see a
+   * {@code ACTION_MOVE}.</p>
+   */
+  private void attachSeekOverlayView (Context context) {
+    if (seekOverlayView != null || contentView == null) {
+      return;
+    }
+    seekOverlayView = new View(context) {
+      @Override
+      protected void onSizeChanged (int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        // contentView may be measured after the overlay was attached.
+        updateSeekOverlayLayout();
+      }
+
+      @Override
+      protected void onDraw (Canvas c) {
+        super.onDraw(c);
+        if (seekGesture != null) {
+          seekGesture.draw(c, getMeasuredWidth(), getMeasuredHeight());
+        }
+      }
+    };
+    seekOverlayView.setLayoutParams(FrameLayoutFix.newParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP));
+    seekOverlayView.setWillNotDraw(false);
+    seekOverlayView.setClickable(false);
+    seekOverlayView.setFocusable(false);
+    seekOverlayView.setVisibility(View.GONE);
+    contentView.addView(seekOverlayView);
+    getSeekGesture();
+    updateSeekOverlayLayout();
+    updateSeekOverlayVisibility();
   }
 
   private void forceVideoFactor (float factor) {
@@ -3649,10 +3752,9 @@ public class MediaViewController extends ViewController<MediaViewController.Args
       videoSliderView.updateSeek(nowMs, durationMs, progress);
     }
     if (stack.getCurrent() == item && seekGesture != null) {
-      seekGesture.onPlaybackProgress(nowMs, durationMs, isPlayingVideo);
-      if (seekGesture.shouldDrawTimeLabel() && seekOverlayView != null) {
-        seekOverlayView.invalidate();
-      }
+      // Drives the always-on "current / total" label. The controller only repaints when
+      // the visible second changed, so this does not force a redraw per progress tick.
+      seekGesture.onPlaybackProgress(nowMs, durationMs);
     }
   }
 
@@ -5245,6 +5347,31 @@ public class MediaViewController extends ViewController<MediaViewController.Args
         this.disallowIntercept = disallowIntercept;
       }
 
+      /**
+       * Entry point for the horizontal seek. This runs before the pager, the gesture
+       * detector and the media cell get a chance to see the event, and — unlike
+       * onInterceptTouchEvent() — it cannot be bypassed by a child calling
+       * requestDisallowInterceptTouchEvent(), which is what the pager does as soon as it
+       * starts tracking a drag.
+       */
+      @Override
+      public boolean dispatchTouchEvent (MotionEvent e) {
+        final int result = handleSeekTouch(e);
+        if (result == SEEK_CONSUMED) {
+          return true;
+        }
+        if (result == SEEK_CLAIMED) {
+          // The pager already started tracking this drag; cancel it so it snaps back
+          // instead of switching to the previous / next media.
+          MotionEvent cancel = MotionEvent.obtain(e);
+          cancel.setAction(MotionEvent.ACTION_CANCEL);
+          super.dispatchTouchEvent(cancel);
+          cancel.recycle();
+          return true;
+        }
+        return super.dispatchTouchEvent(e);
+      }
+
       @Override
       public boolean onInterceptTouchEvent (MotionEvent e) {
         if (slideAnimator != null && slideAnimator.isAnimating()) {
@@ -5583,6 +5710,11 @@ public class MediaViewController extends ViewController<MediaViewController.Args
       bottomSpace.setElevation(Screen.dp(3f));
     }
     contentView.addView(bottomSpace);
+
+    // Attached after every mode-specific branch and before updateVideoState(), so the
+    // overlay exists for MODE_MESSAGES (the chat viewer) as well as MODE_GALLERY, and the
+    // initial visibility below already sees it.
+    attachSeekOverlayView(context);
 
     updateVideoState(false);
     updateCaption(false);
@@ -9535,54 +9667,6 @@ public class MediaViewController extends ViewController<MediaViewController.Args
     contentView.addView(bottomWrap);
     attachedViews.add(bottomWrap);
 
-    // Horizontal swipe on the video surface to seek (preview while dragging, commit on
-    // release), plus tap-to-pause. This view is attached last on purpose: it has to sit
-    // above overlayView / checkView / receiverView, otherwise those (also full size)
-    // views would receive the touch stream first and the gesture would never arrive.
-    seekOverlayView = new View(context) {
-      @Override
-      public boolean onTouchEvent (MotionEvent event) {
-        if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
-          // Tapping the dimmed gallery background dismisses it; that state is owned by
-          // overlayView below us, so forward the decision instead of swallowing the tap.
-          if (showOtherMedias) {
-            setShowOtherMedias(false);
-            return true;
-          }
-          if (seekGesture != null) {
-            seekGesture.showTimeLabel(false);
-            removeCallbacks(seekTimeLabelExpiry);
-            postDelayed(seekTimeLabelExpiry, 2700L);
-            invalidate();
-          }
-        }
-        if (seekGesture == null) {
-          getSeekGesture();
-        }
-        return seekGesture.onTouchEvent(event);
-      }
-
-      @Override
-      protected void onSizeChanged (int w, int h, int oldw, int oldh) {
-        super.onSizeChanged(w, h, oldw, oldh);
-        // contentView may have been measured after the overlay was attached.
-        updateSeekOverlayLayout();
-      }
-
-      @Override
-      protected void onDraw (Canvas c) {
-        super.onDraw(c);
-        if (seekGesture != null) {
-          seekGesture.draw(c, getMeasuredWidth(), getMeasuredHeight());
-        }
-      }
-    };
-    // Full width, but only down to the top of the bottom control strip.
-    seekOverlayView.setLayoutParams(FrameLayoutFix.newParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.TOP));
-    seekOverlayView.setWillNotDraw(false);
-    seekOverlayView.setVisibility(View.GONE);
-    getSeekGesture();
-
     // Image overlay
 
     overlayView = new View(context) {
@@ -9642,13 +9726,6 @@ public class MediaViewController extends ViewController<MediaViewController.Args
       contentView.addView(receiverView);
       attachedViews.add(receiverView);
     }
-
-    // Added last so it is the topmost child of contentView and therefore the first view
-    // to receive touches on the video surface.
-    contentView.addView(seekOverlayView);
-    attachedViews.add(seekOverlayView);
-    updateSeekOverlayLayout();
-    updateSeekOverlayVisibility();
 
     return attachedViews;
   }

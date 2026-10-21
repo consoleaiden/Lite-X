@@ -15,7 +15,7 @@
 | 项 | 值 |
 | --- | --- |
 | 应用名 | **Lite X**（仓库 Variables `APP_NAME`） |
-| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1827` → **1827000** |
+| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1828` → **1828000** |
 | flavor / ABI | `marshmallow`（minSdk 23）+ `arm64-v8a` / `armeabi-v7a` |
 | 构建方式 | GitHub Actions `.github/workflows/build-apk.yml`（`workflow_dispatch`），约 22 分钟 |
 | 应用内更新 | 读本仓库 `/releases/latest` |
@@ -104,19 +104,22 @@
 - `cloudflare/`：`worker.js`（`/api/copy`、`/api/clone`、`/api/health`、`/webhook`）+ `wrangler.toml` + 部署说明。Worker 只有 Bot API 能力，**跑不了 user session**，因此禁止转发的核心突破仍在客户端完成。
 - 已部署实例：`https://lite-x-relay.84339075.workers.dev`（密钥 `BOT_TOKEN`、`RELAY_SECRET` 已配）。App 的「服务地址」默认预填该地址；**口令不进仓库**（仓库与 Release 的 APK 都公开，硬编码等于把 bot 配额送给所有人），需在 App 里粘一次。
 
-### 12. 视频画面横向滑动快进/快退（1826 → 1827 修复）
-- 新增 `mediaview/VideoSeekGestureController`：纯手势状态机，不改播放器内部逻辑。状态 `NONE → SEEKING / SPEED_UP / PENDING`。
-- 挂载：`MediaViewController.createViewGalleryMode()` **最后**加一层透明 `seekOverlayView`（`Gravity.TOP`，高度 = `contentView` 高度 − 56dp，见下），触摸与预览浮层绘制都走它。
-- 可见性：`videoVisible && commonFactor == 0 && pipFactor == 0 && 当前项 isVideoOrGif()` 才 `VISIBLE`。**不要用 `videoFactor`** —— 它是动画进度，播放中可为 0；也**不要**用 `currentSection != SECTION_CAPTION`，`SECTION_CAPTION = 0` 是默认值。
-- 手势仲裁：`ACTION_DOWN` **永不消费**（点击/播放暂停、返回手势照常）；越过 `max(touchSlop, 12dp)` 时若 `|dx| > |dy| * 1.15` 才判定为横向并锁定，否则标记 `PENDING` 永久放手（纵向音量/亮度、翻页不受影响）。多点触控直接取消。
-- 灵敏度：**一屏宽 ≈ 整个视频时长**（`SENSITIVITY_FACTOR = 1.0`），对任意时长手感一致；边界 `Math.max(0, Math.min(duration, target))`。
-- 预览优先：拖动期间只调 `videoSliderView.updateSeek` + 重绘浮层（`时间 / 总时长` + 进度细条 + `±mm:ss` 徽标），**不 seek 播放器**；`ACTION_UP` 才 `mediaView.setSeekProgress(progress)` 一次落点。
-- 单击画面：`ACTION_UP` 位移 < 8dp 时 `Delegate.onTap()` → `MediaCellView.togglePlayPauseFromSurface()`（内部 `playerView.playPause()`，与播放按钮同路径）。gallery 模式下 `playPauseFile == null`，不能用 `MediaItem.performClick` 走播放暂停。
-- 时间读数：按下即显示，点击后驻留 2.5s，数据来自 `onSeekProgress` → `onPlaybackProgress`。
-- 与进度条共存：覆盖层只铺到 56dp 控制条上沿为止（`updateSeekOverlayLayout()`），时间轴圆点拖动、裁剪手柄完全不经过它。
-- 翻页兜底：横向拖动但当前不可 seek（缓冲中/GIF）时，松手若位移 > 40dp 走 `onPageFling` → `dropPreview(DIRECTION_FORWARD/BACKWARD, 1f)`。**不要用 `DIRECTION_AUTO`**，它按 `factor` 判断，此时 `factor == 0` 会直接 return。
-- 暂停恢复：若拖动期间播放器自己暂停（`onPlayPause(false)` 且正在 `SEEKING`），记下 `seekPausedPlayback`，松手跳转后自动恢复播放。
-- 长按（450ms 不动）进入 `SPEED_UP`（显示 `2x` 徽标），松手结束；移动立即取消。
+### 12. 视频画面横向滑动快进/快退（1826 → 1827 → 1828 修复）
+- `mediaview/VideoSeekGestureController`：只做**状态与绘制**，不处理 `MotionEvent`。`IDLE → SEEKING`，对外暴露 `canStartSeek / beginSeek / updateSeekTo / commitSeek / cancelSeek`。
+- **挂载点**：`MediaViewController` 构建 `contentView` 的最后（`switch (mode)` 之后、`updateVideoState()` 之前）调 `attachSeekOverlayView(context)`，**对所有 mode 生效**。
+  - 1826/1827 把它写在 `createViewGalleryMode()` 里，只有 `MODE_GALLERY` 会走；从聊天/频道点开视频是 `MODE_MESSAGES`（值 **0**），该分支从不调用 `createViewGalleryMode()`，覆盖层根本不存在 —— 这是"改动完全没生效"的真正根因，务必先确认 `mode` 再谈其它。
+- **触摸仲裁在 `contentView.dispatchTouchEvent()`**，不在覆盖层上。
+  - 视图级方案不可行：`ACTION_DOWN` 返回 false → 该 View 被移出本次手势，后续 `ACTION_MOVE` 永远收不到；返回 true → 吞掉点击与纵向手势。
+  - 也不能用 `onInterceptTouchEvent`：pager 一旦开始跟踪就调 `requestDisallowInterceptTouchEvent(true)`，`FrameLayout` 会跳过对 `onInterceptTouchEvent` 的调用。
+  - `ACTION_DOWN` **永不消费**，只记录起点；`ACTION_MOVE` 超过 `max(touchSlop, 12dp)` 且 `|dx| > |dy| * 1.15` 才夺取手势，先给子 View 发合成 `ACTION_CANCEL`（pager 回弹、不切图），再进入 seek。
+  - 纵向优先放手：`|dy| > slop && |dy| >= |dx| * 1.15` 立刻 `seekTracking = false`，音量/亮度不受影响。多点触控取消。
+- 灵敏度：**一屏宽 ≈ 整个视频时长**（`SENSITIVITY_FACTOR = 1.0`），边界 `Math.max(0, Math.min(duration, target))`。
+- 预览优先：拖动只调 `videoSliderView.updateSeek` + 重绘 HUD（`时间 / 总时长` + 进度细条 + `±mm:ss` 徽标），松手才 `mediaView.setSeekProgress(progress)` 落点一次。
+- 时间读数：**常驻**显示在控制条上方居中，`onSeekProgress → onPlaybackProgress` 驱动，**只在整秒变化时重绘**；`resetPlaybackProgress()` 在切到图片时清空，避免残留上一段视频的时间。
+- 时长兜底：`getDurationMs()` 先读 `MediaCellView.getTimeTotal()`，为 -1 时回落 `item.getVideoDuration(true, MILLISECONDS)`，否则开播瞬间 `beginSeek` 拿不到长度会直接放弃拖拽。
+- 与进度条共存：`isOnBottomControls(y)` 用 `contentView` 高度 − `bottomWrap` 的 `bottomMargin` − 56dp 判定；控制条 `getInnerAlpha() <= 0.05f`（已隐藏）时不避让，整屏可 seek。覆盖层自身高度同样扣掉这段（`updateSeekOverlayLayout()`）。
+- 单击画面：**不拦截**，走原有 `MediaCellView.onClick` → `playerView.playPause()`，与改动前完全一致。`MediaCellView.togglePlayPauseFromSurface()` 保留但已不再需要。
+- 暂停恢复：若拖动期间播放器自己暂停（`onPlayPause(false)` 且 `isSeeking()`），记 `seekPausedPlayback`，松手跳转后恢复。
 
 ---
 
