@@ -3388,13 +3388,15 @@ public class MediaViewController extends ViewController<MediaViewController.Args
   }
 
   private void setVideoVisible (boolean isVisible, boolean isLoaded, long duration, TimeUnit unit, boolean animated) {
+    // Kept outside the videoSliderView check below: the overlay visibility has to follow
+    // the current item in every mode, including the ones without a timeline strip.
+    final boolean changed = this.videoVisible != isVisible;
+    this.videoVisible = isVisible;
+    // Runs on every item change, including video -> video where the flag stays true,
+    // so the overlay follows the currently selected item.
+    updateSeekOverlayVisibility();
     if (videoSliderView != null) {
       MediaCellView cellView = mediaView != null ? mediaView.findCellForItem(stack.getCurrent()) : null;
-      final boolean changed = this.videoVisible != isVisible;
-      this.videoVisible = isVisible;
-      // Runs on every item change, including video -> video where the flag stays true,
-      // so the overlay follows the currently selected item.
-      updateSeekOverlayVisibility();
       if (changed) {
         if (isVisible) {
           long timeNow, timeTotal;
@@ -3649,7 +3651,10 @@ public class MediaViewController extends ViewController<MediaViewController.Args
     boolean usable =
       current != null &&
       mode != MODE_SECRET &&
-      commonFactor == 0f &&
+      // Same threshold the player itself uses to decide whether the video is being
+      // watched (see setVideoVisible -> videoSliderView.setIsPlaying). Requiring an
+      // exact 0 would hide the overlay during any transient reveal / thumbs animation.
+      commonFactor < 1f &&
       pipFactor == 0f &&
       current.isVideoOrGif() &&
       videoVisible;
