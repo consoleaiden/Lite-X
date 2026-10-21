@@ -15,7 +15,7 @@
 | 项 | 值 |
 | --- | --- |
 | 应用名 | **Lite X**（仓库 Variables `APP_NAME`） |
-| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1828` → **1828000** |
+| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1829` → **1829000** |
 | flavor / ABI | `marshmallow`（minSdk 23）+ `arm64-v8a` / `armeabi-v7a` |
 | 构建方式 | GitHub Actions `.github/workflows/build-apk.yml`（`workflow_dispatch`），约 22 分钟 |
 | 应用内更新 | 读本仓库 `/releases/latest` |
@@ -104,7 +104,11 @@
 - `cloudflare/`：`worker.js`（`/api/copy`、`/api/clone`、`/api/health`、`/webhook`）+ `wrangler.toml` + 部署说明。Worker 只有 Bot API 能力，**跑不了 user session**，因此禁止转发的核心突破仍在客户端完成。
 - 已部署实例：`https://lite-x-relay.84339075.workers.dev`（密钥 `BOT_TOKEN`、`RELAY_SECRET` 已配）。App 的「服务地址」默认预填该地址；**口令不进仓库**（仓库与 Release 的 APK 都公开，硬编码等于把 bot 配额送给所有人），需在 App 里粘一次。
 
-### 12. 视频画面横向滑动快进/快退（1826 → 1827 → 1828 修复）
+### 12. 视频画面横向滑动快进/快退（1826 → 1827 → 1828 → 1829 修复）
+- **判据方向（1829 修正，1826–1828 全部无效的最终根因）**：`commonFactor` 的 `1f` 表示查看器**完全打开**（源码 `isFullyShown()` 即 `commonFactor == 1f`），`0f` 才是关闭。
+  - 前几版把 HUD 可见性写成 `commonFactor < 1f`、把 `canSeek()` 写成 `commonFactor >= 1f` 时返回 false，等于只在 reveal 动画进行中的那零点几秒是激活的 → 正常观看时浮层永远 `GONE`、手势永远不启动，用户看到的就是"完全没变化"。
+  - 正确写法：`updateSeekOverlayVisibility()` 要求 `commonFactor == 1f`；`canSeek()` 在 `commonFactor != 1f` 时返回 false。
+  - 教训：把动画值当开关前，先找同类现成用法（如 `isFullyShown()`）确认两个端点各自的含义，不要靠"非零 / 为零"猜。
 - `mediaview/VideoSeekGestureController`：只做**状态与绘制**，不处理 `MotionEvent`。`IDLE → SEEKING`，对外暴露 `canStartSeek / beginSeek / updateSeekTo / commitSeek / cancelSeek`。
 - **挂载点**：`MediaViewController` 构建 `contentView` 的最后（`switch (mode)` 之后、`updateVideoState()` 之前）调 `attachSeekOverlayView(context)`，**对所有 mode 生效**。
   - 1826/1827 把它写在 `createViewGalleryMode()` 里，只有 `MODE_GALLERY` 会走；从聊天/频道点开视频是 `MODE_MESSAGES`（值 **0**），该分支从不调用 `createViewGalleryMode()`，覆盖层根本不存在 —— 这是"改动完全没生效"的真正根因，务必先确认 `mode` 再谈其它。
@@ -120,6 +124,12 @@
 - 与进度条共存：`isOnBottomControls(y)` 用 `contentView` 高度 − `bottomWrap` 的 `bottomMargin` − 56dp 判定；控制条 `getInnerAlpha() <= 0.05f`（已隐藏）时不避让，整屏可 seek。覆盖层自身高度同样扣掉这段（`updateSeekOverlayLayout()`）。
 - 单击画面：**不拦截**，走原有 `MediaCellView.onClick` → `playerView.playPause()`，与改动前完全一致。`MediaCellView.togglePlayPauseFromSurface()` 保留但已不再需要。
 - 暂停恢复：若拖动期间播放器自己暂停（`onPlayPause(false)` 且 `isSeeking()`），记 `seekPausedPlayback`，松手跳转后恢复。
+
+### 13. 右上角菜单倍速播放（1829）
+- 菜单项：`MediaViewController.openMoreMenu()` 中，当前 item 为视频/GIF 且 `Config.VIDEO_PLAYER_AVAILABLE` 时追加 `R.id.btn_playbackSpeed`，标签为 `R.string.PlaybackSpeed`（非 1x 时附带当前倍速，如 `速度 (1.5x)`）。
+- 选择器：`showPlaybackSpeedOptions()` → `showOptions`，列表 `1x(正常) / 1.25x / 1.5x / 1.75x / 2x / 2.5x / 3x`，当前值蓝色 + 对勾图标；回调必须 `return boolean`（否则编译报 `missing return value`）。
+- 应用链路：`MediaViewController.playbackSpeed` → `MediaCellView.setPlaybackSpeed()`（存字段，`setHideStaticView` 挂载播放器时应用）→ `VideoPlayerView.setPlaybackSpeed()` → `ExoPlayer.setPlaybackParameters(PlaybackParameters)`；`1f` 用 `PlaybackParameters.DEFAULT`。
+- 生效范围：整个查看器会话（滑动切到下一个视频由 `onPlayStarted` 重新推一次，避免 cell 复用丢失倍速）；关闭查看器后回到 1x。
 
 ---
 
