@@ -1698,6 +1698,15 @@ public class MediaViewController extends ViewController<MediaViewController.Args
       strings.append(R.string.SaveGif);
     }
 
+    if (item.isVideoOrGif() && Config.VIDEO_PLAYER_AVAILABLE) {
+      ids.append(R.id.btn_playbackSpeed);
+      String speedLabel = Lang.getString(R.string.PlaybackSpeed);
+      if (playbackSpeed != 1f) {
+        speedLabel += " (" + formatPlaybackSpeed(playbackSpeed) + ")";
+      }
+      strings.append(speedLabel);
+    }
+
     if (!StringUtils.isEmpty(getArgumentsStrict().copyLink) || (chat != null && tdlib.canCopyPostLink(item.getMessage()))) {
       ids.append(R.id.btn_copyLink);
       strings.append(R.string.CopyLink);
@@ -1772,6 +1781,8 @@ public class MediaViewController extends ViewController<MediaViewController.Args
       if (file != null) {
         tdlib.ui().saveGif(file.id);
       }
+    } else if (id == R.id.btn_playbackSpeed) {
+      showPlaybackSpeedOptions();
     } else if (id == R.id.btn_messageReport) {
       TdApi.Message message = item.getMessage();
       if (message != null) {
@@ -3216,7 +3227,10 @@ public class MediaViewController extends ViewController<MediaViewController.Args
 
         @Override
         public boolean canSeek () {
-          if (stack == null || stack.getCurrent() == null || commonFactor >= 1f || pipFactor > 0f) {
+          // commonFactor == 1f means the viewer is fully open (see isFullyShown()).
+          // Seeking is only meaningful once the reveal animation has finished; during
+          // the animation the cells are still being laid out and the pager is tracking.
+          if (stack == null || stack.getCurrent() == null || commonFactor != 1f || pipFactor > 0f) {
             return false;
           }
           MediaItem item = stack.getCurrent();
@@ -3460,6 +3474,70 @@ public class MediaViewController extends ViewController<MediaViewController.Args
       updatePipState(isPlaying);
       videoSliderView.setShowPlayPause(true, true);
     }
+    if (playbackSpeed != 1f) {
+      // The cell may have been recycled since the speed was last chosen; push the
+      // session-wide value so swiping to the next video keeps playing at that speed.
+      MediaCellView cellView = mediaView != null ? mediaView.findCellForItem(item) : null;
+      if (cellView != null) {
+        cellView.setPlaybackSpeed(playbackSpeed);
+      }
+    }
+  }
+
+  // Playback speed
+
+  private static final float[] PLAYBACK_SPEEDS = {1f, 1.25f, 1.5f, 1.75f, 2f, 2.5f, 3f};
+  private static final int[] PLAYBACK_SPEED_IDS = {
+    R.id.btn_speed_100, R.id.btn_speed_125, R.id.btn_speed_150, R.id.btn_speed_175,
+    R.id.btn_speed_200, R.id.btn_speed_250, R.id.btn_speed_300
+  };
+
+  private float playbackSpeed = 1f;
+
+  private static String formatPlaybackSpeed (float speed) {
+    String value = String.format(java.util.Locale.US, "%.2f", speed);
+    if (value.endsWith("00")) {
+      value = value.substring(0, value.length() - 3);
+    } else if (value.endsWith("0")) {
+      value = value.substring(0, value.length() - 1);
+    }
+    return value + "x";
+  }
+
+  private void setPlaybackSpeed (float speed) {
+    if (this.playbackSpeed == speed) {
+      return;
+    }
+    this.playbackSpeed = speed;
+    MediaCellView cellView = findCurrentCellView();
+    if (cellView != null) {
+      cellView.setPlaybackSpeed(speed);
+    }
+  }
+
+  private void showPlaybackSpeedOptions () {
+    final int count = PLAYBACK_SPEEDS.length;
+    String[] strings = new String[count];
+    int[] colors = new int[count];
+    int[] icons = new int[count];
+    for (int i = 0; i < count; i++) {
+      float speed = PLAYBACK_SPEEDS[i];
+      String label = formatPlaybackSpeed(speed);
+      if (speed == 1f) {
+        label += " (" + Lang.getString(R.string.PlaybackSpeed100) + ")";
+      }
+      strings[i] = label;
+      colors[i] = speed == playbackSpeed ? OptionColor.BLUE : OptionColor.NORMAL;
+      icons[i] = speed == playbackSpeed ? R.drawable.baseline_check_24 : R.drawable.baseline_fast_forward_24;
+    }
+    showOptions(Lang.getString(R.string.PlaybackSpeed), PLAYBACK_SPEED_IDS, strings, colors, icons, (itemView, id) -> {
+      for (int i = 0; i < PLAYBACK_SPEED_IDS.length; i++) {
+        if (PLAYBACK_SPEED_IDS[i] == id) {
+          setPlaybackSpeed(PLAYBACK_SPEEDS[i]);
+          break;
+        }
+      }
+    });
   }
 
   private float videoFactor;
@@ -3651,10 +3729,9 @@ public class MediaViewController extends ViewController<MediaViewController.Args
     boolean usable =
       current != null &&
       mode != MODE_SECRET &&
-      // Same threshold the player itself uses to decide whether the video is being
-      // watched (see setVideoVisible -> videoSliderView.setIsPlaying). Requiring an
-      // exact 0 would hide the overlay during any transient reveal / thumbs animation.
-      commonFactor < 1f &&
+      // commonFactor == 1f means the viewer is fully open (see isFullyShown()). Showing
+      // the HUD any earlier would paint it over the reveal / thumbnail animation.
+      commonFactor == 1f &&
       pipFactor == 0f &&
       current.isVideoOrGif() &&
       videoVisible;
