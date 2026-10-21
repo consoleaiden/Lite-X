@@ -872,6 +872,14 @@
   <item type="id" name="btn_inviteLinkAdminApproval" />
   <item type="id" name="btn_inviteLinkName" />
   <item type="id" name="btn_saveGif" />
+  <item type="id" name="btn_playbackSpeed" />
+  <item type="id" name="btn_speed_100" />
+  <item type="id" name="btn_speed_125" />
+  <item type="id" name="btn_speed_150" />
+  <item type="id" name="btn_speed_175" />
+  <item type="id" name="btn_speed_200" />
+  <item type="id" name="btn_speed_250" />
+  <item type="id" name="btn_speed_300" />
   <item type="id" name="btn_stickers" />
   <item type="id" name="btn_stickerSetInfo" />
   <item type="id" name="btn_sendByEnter" />

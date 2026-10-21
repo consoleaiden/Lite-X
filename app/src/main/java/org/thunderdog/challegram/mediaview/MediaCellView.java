@@ -1991,6 +1991,7 @@ public class MediaCellView extends ViewGroup implements
         prepareVideo(media != null && media.getSourceGalleryFile() != null);
         if (playerView != null) {
           playerView.setVideo(media);
+          playerView.setPlaybackSpeed(playbackSpeed);
         }
         if (callback != null) {
           callback.onPlayStarted(media, isPlaying);
@@ -2150,6 +2151,27 @@ public class MediaCellView extends ViewGroup implements
     if (playerView != null) {
       playerView.setSeekProgress(progress);
     }
+  }
+
+  // Playback speed
+
+  private float playbackSpeed = 1f;
+
+  /**
+   * Stores the session-wide playback speed and applies it immediately if the player
+   * is already attached. The stored value is pushed to the player whenever playback
+   * starts (see {@link #setHideStaticView}), so swiping to the next video keeps the
+   * chosen speed.
+   */
+  public void setPlaybackSpeed (float speed) {
+    this.playbackSpeed = speed;
+    if (playerView != null) {
+      playerView.setPlaybackSpeed(speed);
+    }
+  }
+
+  public float getPlaybackSpeed () {
+    return playbackSpeed;
   }
 
   private void setCanSeek (boolean canSeek) {

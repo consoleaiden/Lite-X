@@ -30,6 +30,7 @@ import androidx.annotation.Nullable;
 import androidx.media3.common.C;
 import androidx.media3.common.Effect;
 import androidx.media3.common.PlaybackException;
+import androidx.media3.common.PlaybackParameters;
 import androidx.media3.common.Player;
 import androidx.media3.common.VideoSize;
 import androidx.media3.exoplayer.ExoPlayer;
@@ -213,6 +214,7 @@ public class VideoPlayerView implements Player.Listener, CallManager.CurrentCall
       this.player.addListener(this);
       checkMuted();
       this.player.setVideoTextureView(renderView);
+      applyPlaybackSpeed();
 
       // FIXME: Must not be just a timeout alert.
       //        It should be shown once a significant part of file is downloaded and
@@ -556,6 +558,35 @@ public class VideoPlayerView implements Player.Listener, CallManager.CurrentCall
 
   public void playPause () {
     setPlaying(!isPlaying);
+  }
+
+  // Playback speed
+
+  private float playbackSpeed = 1f;
+
+  /**
+   * Sets the playback speed applied to the current (and future) media in this player.
+   * {@code 1f} restores normal speed. The value survives source changes and is
+   * re-applied whenever the underlying ExoPlayer instance is (re)created.
+   */
+  public void setPlaybackSpeed (float speed) {
+    if (speed < 0.1f) {
+      speed = 1f;
+    }
+    if (this.playbackSpeed != speed) {
+      this.playbackSpeed = speed;
+      applyPlaybackSpeed();
+    }
+  }
+
+  public float getPlaybackSpeed () {
+    return playbackSpeed;
+  }
+
+  private void applyPlaybackSpeed () {
+    if (player != null) {
+      player.setPlaybackParameters(playbackSpeed == 1f ? PlaybackParameters.DEFAULT : new PlaybackParameters(playbackSpeed));
+    }
   }
 
   private boolean isMuted;
