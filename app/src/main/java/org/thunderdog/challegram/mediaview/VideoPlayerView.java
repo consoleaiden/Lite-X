@@ -585,7 +585,16 @@ public class VideoPlayerView implements Player.Listener, CallManager.CurrentCall
 
   private void applyPlaybackSpeed () {
     if (player != null) {
-      player.setPlaybackParameters(playbackSpeed == 1f ? PlaybackParameters.DEFAULT : new PlaybackParameters(playbackSpeed));
+      if (playbackSpeed == 1f) {
+        player.setPlaybackParameters(PlaybackParameters.DEFAULT);
+      } else {
+        // Keep the pitch essentially constant when speeding up (same convention as
+        // TGPlayerController.newPlaybackParameters): time-stretched audio sounds natural
+        // at 1.25x-3x, whereas leaving pitch == speed produces the "chipmunk" effect that
+        // most users perceive as audio out of sync with the picture.
+        final float pitch = playbackSpeed > 1f ? 0.98f : 1f;
+        player.setPlaybackParameters(new PlaybackParameters(playbackSpeed, pitch));
+      }
     }
   }
 

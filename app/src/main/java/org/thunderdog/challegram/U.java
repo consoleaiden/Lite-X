@@ -711,7 +711,11 @@ public class U {
     final int extensionMode = preferExtensions || org.thunderdog.challegram.unsorted.Settings.instance().getNewSetting(org.thunderdog.challegram.unsorted.Settings.SETTING_FLAG_FORCE_EXO_PLAYER_EXTENSIONS) ?
       DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER :
       DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON;
-    final RenderersFactory renderersFactory = new DefaultRenderersFactory(context).setExtensionRendererMode(extensionMode);
+    final RenderersFactory renderersFactory = new DefaultRenderersFactory(context)
+      .setExtensionRendererMode(extensionMode)
+      // Let a struggling hardware decoder (common while playing at >1x speed) fall back
+      // to the bundled software decoders instead of dropping frames or erroring out.
+      .setEnableDecoderFallback(true);
     final MediaSource.Factory mediaSourceFactory = new DefaultMediaSourceFactory(context, new DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true));
     final AnalyticsCollector analyticsCollector;
     if (Log.getLogLevel() > Log.LEVEL_ASSERT) {
@@ -732,7 +736,17 @@ public class U {
     }
     ExoPlayer.Builder b = new ExoPlayer.Builder(context, renderersFactory, mediaSourceFactory)
       .setTrackSelector(new DefaultTrackSelector(context))
-      .setLoadControl(new DefaultLoadControl());
+      // Buffer cap raised from the 50s default: at 2x-3x playback the same network
+      // buffer drains two to three times faster, which used to cause rebuffer stalls
+      // while streaming. Start / rebuffer thresholds stay at the defaults.
+      .setLoadControl(new DefaultLoadControl.Builder()
+        .setBufferDurationsMs(
+          DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
+          120000,
+          DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_MS,
+          DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
+        )
+        .build());
     if (analyticsCollector != null) {
       b.setAnalyticsCollector(analyticsCollector);
     }
