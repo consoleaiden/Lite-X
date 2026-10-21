@@ -3534,9 +3534,10 @@ public class MediaViewController extends ViewController<MediaViewController.Args
       for (int i = 0; i < PLAYBACK_SPEED_IDS.length; i++) {
         if (PLAYBACK_SPEED_IDS[i] == id) {
           setPlaybackSpeed(PLAYBACK_SPEEDS[i]);
-          break;
+          return true;
         }
       }
+      return false;
     });
   }
 
