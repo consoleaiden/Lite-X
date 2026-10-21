@@ -142,6 +142,34 @@
 - UI 复用通用机制：`SettingsThemeController` 里 `btn_toggleNewSetting` + `.setLongId(...)` + `.setBoolValue(true)`（boolValue 取反：开关亮 = 手势可用），点击走 `handleSettingClick`，显示走 `updateSettingView`，均已在 `ViewController` 基类实现。
 - 生效点：`MediaViewController.canSeek()`（关 → 横向拖动完全交还 pager 切换媒体）与 `updateSeekOverlayVisibility()`（关 → 不画时间 HUD）。重新打开查看器即生效，无需重启应用；点按暂停、底部进度条、音量亮度手势不受影响。
 
+### 15. 我的频道（1831）
+- 入口：首页左抽屉，**联系人 / 收藏夹 / 我的频道 / 设置**（`R.id.btn_myChannels`，图标 `baseline_campaign_24`）→ `DrawerController.openMyChannels()`。
+- 实现方式：**不新建列表控件**，而是给现成的 `ChatsController` 传一个 `ChatFilter`。新增 `ChatFilter.myChannelsFilter(tdlib)`：
+  ```java
+  tdlib.isChannel(chat.id) && tdlib.haveCreatorRights(chat.id)
+  ```
+  - `isChannel(chatId)` → `supergroup.isChannel`（含广播群），与内置「频道」筛选口径一致；
+  - `haveCreatorRights(chatId)` → `chatStatus(chatId)` 即 `supergroup.status`，本地缓存同步可取，无需发请求。
+  - 由此直接复用聊天行的全部既有能力：头像/在线状态、置顶排序、长按菜单、滑动操作、分享、实时更新、搜索。
+- 三个小改动让 `ChatsController` 能当普通页面用：
+  1. `ChatFilter.getTitleStringRes()`（新增 default，`0` 表示沿用默认）→ `getHeaderResource()` 优先用它，标题显示「我的频道」而不是「聊天」。
+  2. `isBaseController()` 原来写作 `… || TD.isChatListMain(chatList())`，导致任何挂在主列表上的过滤列表都被当成首页 base（返回按钮变成抽屉汉堡、没有返回箭头）。改为：有 `Arguments` 时只看 `args.isBaseController`，只有无参数构造（抽屉的长按预览）才回落到 `TD.isChatListMain`。
+  3. `onCreateView()` 里 `if (!isBaseController()) generateChatSearchView(...)` 顺带让这个页面自带搜索，命中结果同样过一遍 `filter`。
+- 数据完整性：过滤列表只能看到「已加载进主列表」的会话，所以在打开页面前先
+  `tdlib.chatList(CHAT_LIST_MAIN).loadAtLeast(filter, 1, 100, null)`——本地 `LoadChats` 循环拉取直到命中或到底，避免很早创建、又在列表深处的频道显示不出来。
+- 已知边界：只覆盖主列表（归档里的频道不会出现）；`haveCreatorRights` 只看 `supergroup.status`，因此「创建者已退出/被移除」的频道按 TDLib 语义不算创建者。
+
+### 16. 为什么不做「首页新增分组」（方案对比，1831）
+用户曾提出另一种方案：在首页频道分组后面默认加一个「我的频道」分组。评估后弃用：
+
+| 维度 | 抽屉入口（已采用） | 首页新增分组（弃用） |
+| --- | --- | --- |
+| TDLib 支持 | 无需新模型，纯前端过滤 | 无「我创建的」这类规则，只有静态 chat id 列表 + 类型过滤 |
+| 若用 ChatFolder | — | 需 `CreateChatFolder` 写服务端，**会同步到用户所有客户端**，污染账号 |
+| 若用伪分组 | — | 要伪造 `ChatPosition`、绕过置顶/归档/分页/动画，与 `ChatsAdapter` 强耦合 |
+| 数据新鲜度 | 实时（跟随 chat list 更新） | 新建频道后分组不自动收录，需后台重算 |
+| 风险面 | 一个 filter + 一个抽屉项 | 首页渲染链路整体受影响 |
+
 ---
 
 ## 🚀 怎么继续改（操作手册）

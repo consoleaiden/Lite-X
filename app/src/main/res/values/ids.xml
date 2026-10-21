@@ -1479,4 +1479,7 @@
   <item type="id" name="btn_botRelaySecret" />
   <item type="id" name="btn_botRelayUseRemote" />
   <item type="id" name="btn_botRelayHelp" />
+
+  <!-- My channels (custom feature) -->
+  <item type="id" name="btn_myChannels" />
 </resources>

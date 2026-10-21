@@ -45,6 +45,7 @@ import org.thunderdog.challegram.component.base.TogglerView;
 import org.thunderdog.challegram.config.Config;
 import org.thunderdog.challegram.core.Lang;
 import org.thunderdog.challegram.support.ViewSupport;
+import org.thunderdog.challegram.telegram.ChatFilter;
 import org.thunderdog.challegram.telegram.GlobalAccountListener;
 import org.thunderdog.challegram.telegram.GlobalCountersListener;
 import org.thunderdog.challegram.telegram.GlobalTokenStateListener;
@@ -93,6 +94,7 @@ import me.vkryl.core.StringUtils;
 import me.vkryl.core.collection.IntList;
 import me.vkryl.core.lambda.CancellableRunnable;
 import tgx.td.ChatId;
+import tgx.td.ChatPosition;
 
 public class DrawerController extends ViewController<Void> implements View.OnClickListener, Settings.ProxyChangeListener, GlobalAccountListener, GlobalCountersListener, BaseView.CustomControllerProvider, BaseView.ActionListProvider, View.OnLongClickListener, TdlibSettingsManager.NotificationProblemListener, TdlibOptionListener, SessionListener, GlobalTokenStateListener, SystemBackEventListener {
   private int currentWidth, shadowWidth;
@@ -283,6 +285,7 @@ public class DrawerController extends ViewController<Void> implements View.OnCli
 
     items.add(new ListItem(ListItem.TYPE_DRAWER_ITEM, R.id.btn_contacts, R.drawable.baseline_perm_contact_calendar_24, R.string.Contacts));
     items.add(new ListItem(ListItem.TYPE_DRAWER_ITEM, R.id.btn_savedMessages, R.drawable.baseline_bookmark_24, R.string.SavedMessages));
+    items.add(new ListItem(ListItem.TYPE_DRAWER_ITEM, R.id.btn_myChannels, R.drawable.baseline_campaign_24, R.string.MyChannels));
     this.settingsClickBait = getSettingsClickBait();
     items.add(new ListItem(ListItem.TYPE_DRAWER_ITEM, R.id.btn_settings, R.drawable.baseline_settings_24, R.string.Settings));
 
@@ -853,6 +856,8 @@ public class DrawerController extends ViewController<Void> implements View.OnCli
       }
     } else if (viewId == R.id.btn_savedMessages) {
       openSavedMessages();
+    } else if (viewId == R.id.btn_myChannels) {
+      openMyChannels();
     } else if (viewId == R.id.btn_addAccount) {
       context.currentTdlib().ui().addAccount(context, true, false);
       /*case R.id.btn_logout: {
@@ -981,6 +986,23 @@ public class DrawerController extends ViewController<Void> implements View.OnCli
       c.setNeedSearch();
       openController(c);
     });
+  }
+
+  /**
+   * Opens the list of channels created by the current account.
+   *
+   * <p>The list is implemented as a {@link ChatFilter} on top of the regular main chat list, which
+   * keeps every built-in behaviour (pinned chats, sharing, swipe actions, live updates) intact.
+   * Since entries are only known once they have been loaded into the chat list, a bounded load is
+   * requested first so older channels do not stay hidden until the user scrolls the main list.
+   */
+  private void openMyChannels () {
+    final Tdlib tdlib = context.currentTdlib();
+    ChatFilter filter = ChatFilter.myChannelsFilter(tdlib);
+    tdlib.chatList(ChatPosition.CHAT_LIST_MAIN).loadAtLeast(filter, 1, 100, null);
+    ChatsController c = new ChatsController(context, tdlib);
+    c.setArguments(new ChatsController.Arguments(filter));
+    openController(c);
   }
 
   private void openCallList() {

@@ -22,6 +22,8 @@ import me.vkryl.core.lambda.Filter;
 public interface ChatFilter extends Filter<TdApi.Chat> {
   default int getTotalStringRes () { return R.string.xChats; }
   default int getEmptyStringRes () { return R.string.NoChats; }
+  /** Custom header title. {@code 0} means "use the default one". */
+  default int getTitleStringRes () { return 0; }
   default boolean canFilterMessages () { return false; }
   default int getMessagesStringRes (boolean isArchive) { return R.string.general_Messages; }
 
@@ -96,6 +98,44 @@ public interface ChatFilter extends Filter<TdApi.Chat> {
 
       @Override
       public int getMessagesStringRes(boolean isArchive) {
+        return isArchive ? R.string.MessagesArchiveChannels : R.string.MessagesChannels;
+      }
+
+      @Override
+      public boolean canFilterMessages () {
+        return true;
+      }
+    };
+  }
+
+  /**
+   * Channels (and broadcast groups) created by the current user, i.e. where the current user
+   * is the owner. Used by the "My Channels" drawer entry.
+   */
+  static ChatFilter myChannelsFilter (Tdlib tdlib) {
+    return new ChatFilter() {
+      @Override
+      public boolean accept (TdApi.Chat chat) {
+        return tdlib.isChannel(chat.id) && tdlib.haveCreatorRights(chat.id);
+      }
+
+      @Override
+      public int getTitleStringRes () {
+        return R.string.MyChannels;
+      }
+
+      @Override
+      public int getTotalStringRes () {
+        return R.string.xChannels;
+      }
+
+      @Override
+      public int getEmptyStringRes () {
+        return R.string.NoCreatedChannels;
+      }
+
+      @Override
+      public int getMessagesStringRes (boolean isArchive) {
         return isArchive ? R.string.MessagesArchiveChannels : R.string.MessagesChannels;
       }
 

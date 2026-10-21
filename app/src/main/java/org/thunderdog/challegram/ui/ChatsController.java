@@ -1019,7 +1019,8 @@ public class ChatsController extends TelegramViewController<ChatsController.Argu
       return pickerDelegate.getTitleStringRes();
     }
     if (filter != null) {
-      return R.string.Chats;
+      int customTitle = filter.getTitleStringRes();
+      return customTitle != 0 ? customTitle : R.string.Chats;
     }
     switch (chatList().getConstructor()) {
       case TdApi.ChatListArchive.CONSTRUCTOR:
@@ -1147,7 +1148,18 @@ public class ChatsController extends TelegramViewController<ChatsController.Argu
   }
 
   private boolean isBaseController () {
-    return pickerDelegate == null && ((getArguments() != null && getArguments().isBaseController) || TD.isChatListMain(chatList())); // FIXME replace with indexInStack() == 0
+    if (pickerDelegate != null) {
+      return false;
+    }
+    // Only the controllers explicitly created for the main pager (or the drawer's force touch
+    // preview, which passes no arguments at all) are treated as base controllers. Filtered lists
+    // that happen to live on the main chat list - e.g. "My Channels" - are regular pushed pages,
+    // so they must show a back arrow instead of the drawer button.
+    Arguments args = getArguments();
+    if (args != null) {
+      return args.isBaseController;
+    }
+    return TD.isChatListMain(chatList());
   }
 
   @Override

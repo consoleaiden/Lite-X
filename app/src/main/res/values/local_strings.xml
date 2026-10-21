@@ -124,4 +124,12 @@
   <string name="BotRelayHelpText">1. BOT_TOKEN\n在 @BotFather 发送 /newbot，按提示创建后获得 Token；把它设为目标频道管理员（需「发布消息」权限），并加入源频道。\n\n2. API_ID / API_HASH\n打开 https://my.telegram.org → API development tools，创建应用后获得。仅在自建外部服务时需要。\n\n3. Cloudflare 中转\n仓库 cloudflare/ 目录内含 worker.js 与部署说明：在 Cloudflare Pages / Workers 中创建项目，绑定 BOT_TOKEN 环境变量，然后把生成的地址填到上面的「服务地址」。\n\n4. 不想配置任何服务？\n直接使用即可：本机「下载 + 重新上传」方案已能突破禁止转发限制。</string>
   <string name="BotRelayRemoteStarted">已提交云端中转任务</string>
   <string name="BotRelayRemoteFailed">云端中转失败：%1$s</string>
+
+  <!-- Video playback (custom features, not part of the upstream app) -->
+  <string name="VideoSwipeSeek">滑动快进/倒退</string>
+  <string name="VideoSwipeSeekDesc">在视频画面上左右滑动即可快进或倒退，拖动时仅预览进度，松手后跳转</string>
+
+  <!-- My channels (custom feature, not part of the upstream app) -->
+  <string name="MyChannels">我的频道</string>
+  <string name="NoCreatedChannels">**还没有创建任何频道**\n\n你创建的频道会集中显示在这里，方便快速进入管理</string>
 </resources>
