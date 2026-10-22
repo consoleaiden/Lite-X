@@ -15,6 +15,7 @@ import androidx.annotation.Nullable;
 import org.drinkless.tdlib.TdApi;
 import org.thunderdog.challegram.R;
 import org.thunderdog.challegram.core.Lang;
+import org.thunderdog.challegram.data.TD;
 import org.thunderdog.challegram.tool.UI;
 import org.thunderdog.challegram.unsorted.BotRelayConfig;
 
@@ -27,8 +28,9 @@ import me.vkryl.core.StringUtils;
 
 /**
  * Copies a channel (profile + messages) into another channel.
- * Messages are re-published instead of being forwarded, so it also works for
- * channels that forbid forwarding.
+ * Messages go through the cheapest working step: a direct send_copy forward (server-side,
+ * no re-upload), then - only when the source chat forbids forwarding - the local
+ * download + re-upload path, so it also works for channels that forbid forwarding.
  */
 public final class ChannelCloner {
   public static final int LIMIT_ALL = -1;
@@ -109,7 +111,7 @@ public final class ChannelCloner {
 
     private void copyProfile (TdApi.Chat sourceChat, TdApi.Chat targetChat) {
       if (targetChat.photo == null && sourceChat.photo != null && sourceChat.photo.big != null && sourceChat.photo.big.id != 0) {
-        tdlib.send(new TdApi.SetChatPhoto(targetChatId, new TdApi.InputChatPhotoStatic(new TdApi.InputFileId(sourceChat.photo.big.id))), tdlib.typedOkHandler());
+        copyProfilePhoto(sourceChat.photo.big);
       }
       if (sourceChat.type instanceof TdApi.ChatTypeSupergroup) {
         long supergroupId = ((TdApi.ChatTypeSupergroup) sourceChat.type).supergroupId;
@@ -119,6 +121,50 @@ public final class ChannelCloner {
           }
         });
       }
+    }
+
+    private static final int PHOTO_POLL_MS = 500;
+    private static final int PHOTO_POLL_MAX = 60;
+
+    /**
+     * TDLib never accepts {@link TdApi.InputFileId} for SetChatPhoto (it processes chat
+     * photos with never_reuse=true, failing with "Can't use inputFileId"), so the source
+     * photo has to be downloaded and referenced by a local path instead.
+     */
+    private void copyProfilePhoto (TdApi.File photo) {
+      if (TD.isFileLoadedAndExists(photo)) {
+        uploadProfilePhoto(photo.local.path);
+        return;
+      }
+      tdlib.send(new TdApi.DownloadFile(photo.id, TdlibFilesManager.PRIORITY_USER_REQUEST_SHARE, 0, 0, false), (started, error) -> {
+        if (finished || error != null) {
+          return; // avatar is best-effort
+        }
+        pollProfilePhoto(photo.id, 0);
+      });
+    }
+
+    private void pollProfilePhoto (int fileId, int attempt) {
+      if (finished || attempt >= PHOTO_POLL_MAX) {
+        return;
+      }
+      tdlib.send(new TdApi.GetFile(fileId), (file, error) -> {
+        if (finished) {
+          return;
+        }
+        if (file != null && file.local != null && file.local.isDownloadingCompleted && file.local.path != null && !file.local.path.isEmpty()) {
+          uploadProfilePhoto(file.local.path);
+          return;
+        }
+        UI.post(() -> pollProfilePhoto(fileId, attempt + 1), PHOTO_POLL_MS);
+      });
+    }
+
+    private void uploadProfilePhoto (String localPath) {
+      if (StringUtils.isEmpty(localPath)) {
+        return;
+      }
+      tdlib.send(new TdApi.SetChatPhoto(targetChatId, new TdApi.InputChatPhotoStatic(new TdApi.InputFileLocal(localPath))), (ok, error) -> { });
     }
 
     private void loadPage (long fromMessageId) {
@@ -218,14 +264,46 @@ public final class ChannelCloner {
     /**
      * When a bot is configured it can copy messages server-side (no download, no
      * upload, no traffic on the phone). Anything it refuses — typically content
-     * protected chats — is retried locally afterwards.
+     * protected chats — is retried by a direct forward first and only then locally.
      */
     private void copyPage (List<TdApi.Message> ordered, int total) {
       if (!BotRelayConfig.canUseBot()) {
-        copyLocally(ordered, total);
+        copyViaForward(ordered, total);
         return;
       }
       copyViaBot(ordered, 0, new ArrayList<>(), total);
+    }
+
+    /**
+     * The cheapest clone step: messages.forwardMessages with send_copy=true re-publishes
+     * content without any reference to the original sender, and the server already has
+     * every file, so there is no download and no upload on the phone. It only fails when
+     * the source chat forbids forwarding - in that case degrade to the local
+     * download + re-upload path.
+     */
+    private void copyViaForward (List<TdApi.Message> ordered, int total) {
+      long[] ids = new long[ordered.size()];
+      for (int i = 0; i < ordered.size(); i++) {
+        ids[i] = ordered.get(i).id;
+      }
+      tdlib.send(new TdApi.ForwardMessages(targetChatId, null, sourceChatId, ids, ContentCopySender.defaultSendOptions(), true, false), (result, error) -> {
+        if (finished) {
+          return;
+        }
+        if (error == null) {
+          copied += ids.length;
+          if (listener != null) {
+            listener.onProgress(copied, total);
+          }
+          advancePage();
+          return;
+        }
+        if (TD.isForwardsRestricted(error)) {
+          copyLocally(ordered, total);
+          return;
+        }
+        finish(copied, error.message);
+      });
     }
 
     private void copyViaBot (List<TdApi.Message> ordered, int index, List<TdApi.Message> failed, int total) {
@@ -236,7 +314,7 @@ public final class ChannelCloner {
         if (failed.isEmpty()) {
           advancePage();
         } else {
-          copyLocally(failed, total);
+          copyViaForward(failed, total);
         }
         return;
       }

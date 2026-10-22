@@ -179,6 +179,18 @@
 - 覆盖面：单条与相册、`ChannelCloner` / `RestrictedContentSaver` / ShareController 的 noforwards 回退全部走 `ContentCopySender`，一处修复全部生效。Bot API / Cloudflare 中转通道的 `copyMessage` 同样受 1024 限制，失败后会落到本地通道，由本修复兜底。
 - 已知限制：拆出来的文本消息与媒体在时间上紧邻但不是同一条消息（Telegram 本身不允许 >1024 的媒体说明，官方 App 也这样做）；进度计数 `sent` 仍按源消息数计，不把拆分文本算进去。
 
+### 18. 频道克隆：Can't use inputFileId + 先转发后降级（1833）
+- 现象：克隆频道报 `#400: Can't use inputFileId`。手动转发同一频道完全正常。
+- 根因 1（头像）：`ChannelCloner.copyProfile()` 用 `InputChatPhotoStatic(InputFileId(源头像))` 调 `SetChatPhoto`。TDLib 对聊天照片的处理是 `get_input_file_id(..., never_reuse=true)`（`DialogManager::do_set_dialog_photo`），**凡是 InputFileId 一律拒绝**，返回 `Can't use inputFileId`——这条路从来就不可能成功。
+  - 修复：先下载源频道头像（`DownloadFile` + 轮询 `GetFile`，复用 ContentCopySender 同款模式），再 `SetChatPhoto(InputChatPhotoStatic(InputFileLocal(path)))`。头像属于尽力而为，下载/设置失败静默跳过，不再弹错误 toast。
+- 根因 2（策略）：克隆之前直接走"下载 + 重传"，白白消耗流量。按用户要求改为**三级降级**：
+  1. **直接转发**（新）：`messages.forwardMessages` + `sendCopy=true`——不携带"转发自"标头、服务端已有全部文件、手机零下载零上传；
+  2. 失败且 `TD.isForwardsRestricted(error)`（CHAT_FORWARDS_RESTRICTED / protected content / noforwards 等）→ **本地下载 + 重传**（原 `ContentCopySender` 通道，含 1832 的 caption 拆分）；
+  3. 配置了 bot 中转时，bot `copyMessage` 失败的消息同样先走 1 再走 2。
+  其他错误（如消息被删除）仍直接终止并报错，与既有行为一致。
+- 版本成本：`copied` 计数保持按源消息数统计，转发成功即 `+= ids.length`，与本地通道口径一致。
+
+
 ---
 
 ## 🚀 怎么继续改（操作手册）
