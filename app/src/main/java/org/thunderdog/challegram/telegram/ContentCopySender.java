@@ -129,20 +129,25 @@ public final class ContentCopySender {
 
     private void sendAlbum (TdApi.Message[] album) {
       List<TdApi.InputMessageContent> contents = new ArrayList<>(album.length);
-      prepareAlbum(album, 0, contents, () -> {
+      List<TdApi.InputMessageContent> overflowCaptions = new ArrayList<>(1);
+      prepareAlbum(album, 0, contents, overflowCaptions, () -> {
         if (finished) {
           return;
         }
         if (contents.isEmpty()) {
-          index += album.length;
-          processNext();
+          if (overflowCaptions.isEmpty()) {
+            index += album.length;
+            processNext();
+          } else {
+            sendOverflowTexts(overflowCaptions, album.length);
+          }
         } else {
-          sendContents(contents, album.length);
+          sendContents(contents, album.length, overflowCaptions);
         }
       });
     }
 
-    private void prepareAlbum (TdApi.Message[] album, int i, List<TdApi.InputMessageContent> out, Runnable onReady) {
+    private void prepareAlbum (TdApi.Message[] album, int i, List<TdApi.InputMessageContent> out, List<TdApi.InputMessageContent> overflowCaptions, Runnable onReady) {
       if (finished) {
         return;
       }
@@ -153,19 +158,20 @@ public final class ContentCopySender {
       final TdApi.Message message = album[i];
       TdApi.File file = TD.getCopySourceFile(message.content);
       if (file == null) {
-        addContent(out, message, null);
-        prepareAlbum(album, i + 1, out, onReady);
+        addContent(out, overflowCaptions, message, null);
+        prepareAlbum(album, i + 1, out, overflowCaptions, onReady);
         return;
       }
       ensureDownloaded(file, localPath -> {
-        addContent(out, message, localPath);
-        prepareAlbum(album, i + 1, out, onReady);
+        addContent(out, overflowCaptions, message, localPath);
+        prepareAlbum(album, i + 1, out, overflowCaptions, onReady);
       });
     }
 
-    private void addContent (List<TdApi.InputMessageContent> out, TdApi.Message message, @Nullable String localPath) {
+    private void addContent (List<TdApi.InputMessageContent> out, List<TdApi.InputMessageContent> overflowCaptions, TdApi.Message message, @Nullable String localPath) {
       TdApi.InputMessageContent content = TD.toInputMessageContent(message.content, removeCaption, localPath);
       if (content != null) {
+        moveOverlongCaptionToText(content, overflowCaptions);
         out.add(content);
       }
     }
@@ -178,12 +184,14 @@ public final class ContentCopySender {
         return;
       }
       List<TdApi.InputMessageContent> contents = new ArrayList<>(1);
+      List<TdApi.InputMessageContent> overflowCaptions = new ArrayList<>(1);
+      moveOverlongCaptionToText(input, overflowCaptions);
       contents.add(input);
-      sendContents(contents, consumed);
+      sendContents(contents, consumed, overflowCaptions);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
-    private void sendContents (List<TdApi.InputMessageContent> contents, int consumed) {
+    private void sendContents (List<TdApi.InputMessageContent> contents, int consumed, List<TdApi.InputMessageContent> overflowTexts) {
       final TdApi.Function<?> function;
       if (contents.size() == 1) {
         function = new TdApi.SendMessage(toChatId, topicId, null, options, null, contents.get(0));
@@ -197,6 +205,20 @@ public final class ContentCopySender {
           return;
         }
         if (error != null) {
+          if (isCaptionTooLong(error)) {
+            // Proactive split missed this case (different length counting on the server) -
+            // strip every caption and retry once, posting captions as text messages.
+            List<TdApi.InputMessageContent> texts = new ArrayList<>(overflowTexts);
+            for (TdApi.InputMessageContent content : contents) {
+              TdApi.FormattedText caption = mediaCaption(content);
+              if (caption != null && caption.text != null && !caption.text.isEmpty()) {
+                setMediaCaption(content, null);
+                texts.add(new TdApi.InputMessageText(caption, null, false));
+              }
+            }
+            sendOverflowText(texts, 0, consumed);
+            return;
+          }
           finish(error);
           return;
         }
@@ -204,8 +226,120 @@ public final class ContentCopySender {
         if (callback != null) {
           callback.onProgress(sent, messages.length);
         }
+        if (overflowTexts.isEmpty()) {
+          index += consumed;
+          processNext();
+        } else {
+          sendOverflowTexts(overflowTexts, consumed);
+        }
+      });
+    }
+
+    private static boolean isCaptionTooLong (TdApi.Error error) {
+      return error.code == 400 && error.message != null && error.message.contains("caption is too long");
+    }
+
+    /**
+     * Telegram allows up to 1024 characters in a media caption, but plain text messages
+     * may be up to 4096 characters. Long channel posts that travel as a media caption do
+     * not fit into the caption of a re-published copy and the server rejects the whole
+     * message with "Message caption is too long". The official apps work around this by
+     * sending the media without a caption and posting the caption as separate text
+     * messages right after it - do the same here.
+     */
+    private void moveOverlongCaptionToText (TdApi.InputMessageContent content, List<TdApi.InputMessageContent> out) {
+      if (removeCaption) {
+        return;
+      }
+      TdApi.FormattedText caption = mediaCaption(content);
+      if (caption == null || caption.text == null || caption.text.isEmpty()) {
+        return;
+      }
+      if (caption.text.codePointCount(0, caption.text.length()) <= tdlib.maxCaptionLength()) {
+        return;
+      }
+      setMediaCaption(content, null);
+      out.add(new TdApi.InputMessageText(caption, null, false));
+    }
+
+    private static @Nullable TdApi.FormattedText mediaCaption (TdApi.InputMessageContent content) {
+      switch (content.getConstructor()) {
+        case TdApi.InputMessagePhoto.CONSTRUCTOR:
+          return ((TdApi.InputMessagePhoto) content).caption;
+        case TdApi.InputMessageVideo.CONSTRUCTOR:
+          return ((TdApi.InputMessageVideo) content).caption;
+        case TdApi.InputMessageDocument.CONSTRUCTOR:
+          return ((TdApi.InputMessageDocument) content).caption;
+        case TdApi.InputMessageAnimation.CONSTRUCTOR:
+          return ((TdApi.InputMessageAnimation) content).caption;
+        case TdApi.InputMessageAudio.CONSTRUCTOR:
+          return ((TdApi.InputMessageAudio) content).caption;
+        case TdApi.InputMessageVoiceNote.CONSTRUCTOR:
+          return ((TdApi.InputMessageVoiceNote) content).caption;
+        default:
+          return null;
+      }
+    }
+
+    private static void setMediaCaption (TdApi.InputMessageContent content, @Nullable TdApi.FormattedText caption) {
+      switch (content.getConstructor()) {
+        case TdApi.InputMessagePhoto.CONSTRUCTOR:
+          ((TdApi.InputMessagePhoto) content).caption = caption;
+          break;
+        case TdApi.InputMessageVideo.CONSTRUCTOR:
+          ((TdApi.InputMessageVideo) content).caption = caption;
+          break;
+        case TdApi.InputMessageDocument.CONSTRUCTOR:
+          ((TdApi.InputMessageDocument) content).caption = caption;
+          break;
+        case TdApi.InputMessageAnimation.CONSTRUCTOR:
+          ((TdApi.InputMessageAnimation) content).caption = caption;
+          break;
+        case TdApi.InputMessageAudio.CONSTRUCTOR:
+          ((TdApi.InputMessageAudio) content).caption = caption;
+          break;
+        case TdApi.InputMessageVoiceNote.CONSTRUCTOR:
+          ((TdApi.InputMessageVoiceNote) content).caption = caption;
+          break;
+      }
+    }
+
+    private void sendOverflowTexts (List<TdApi.InputMessageContent> texts, int consumed) {
+      sendOverflowText(texts, 0, consumed);
+    }
+
+    private void sendOverflowText (List<TdApi.InputMessageContent> texts, int i, int consumed) {
+      if (finished) {
+        return;
+      }
+      if (i >= texts.size()) {
         index += consumed;
         processNext();
+        return;
+      }
+      List<TdApi.InputMessageContent> parts = TD.explodeText(texts.get(i), tdlib.maxMessageTextLength());
+      sendTextPart(parts, 0, () -> sendOverflowText(texts, i + 1, consumed));
+    }
+
+    private void sendTextPart (List<TdApi.InputMessageContent> parts, int i, Runnable then) {
+      if (finished) {
+        return;
+      }
+      if (i >= parts.size()) {
+        then.run();
+        return;
+      }
+      @SuppressWarnings({"unchecked", "rawtypes"})
+      TdApi.Function rawFunction = new TdApi.SendMessage(toChatId, topicId, null, options, null, parts.get(i));
+      tdlib.send(rawFunction, (result, error) -> {
+        if (finished) {
+          return;
+        }
+        if (error != null) {
+          finish(error);
+          return;
+        }
+        sendTextPart(parts, i + 1, then);
       });
     }
 

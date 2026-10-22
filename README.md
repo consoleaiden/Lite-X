@@ -170,6 +170,15 @@
 | 数据新鲜度 | 实时（跟随 chat list 更新） | 新建频道后分组不自动收录，需后台重算 |
 | 风险面 | 一个 filter + 一个抽屉项 | 首页渲染链路整体受影响 |
 
+### 17. 受限内容复制：超长 caption 导致 400 失败（1832）
+- 现象：转发/克隆受限内容时报 `#400: Message caption is too long`，整条（或整组相册）复制中止。实测素材为长文帖（图片/视频 + 大段文字）。
+- 根因：`ContentCopySender` 的"下载 + 重传"通道把原消息的 `caption` **原样**塞进 `InputMessagePhoto/Video/...`。Telegram 的媒体 caption 上限是 **1024 字符**（普通文本是 4096），长文帖的说明放不下，TDLib 直接拒绝。
+- 修复（双保险，均在 `ContentCopySender.Session`）：
+  1. **预检拆分**：`moveOverlongCaptionToText()` 在发送前检查每条内容的 caption 码点数（对比 `tdlib.maxCaptionLength()`，即服务端下发的 `message_caption_length_max`）。超限时媒体置空 caption 发送，caption 降级为独立文本消息跟在后面（与官方客户端行为一致）；文本本身超 4096 时复用 `TD.explodeText()` 分段。相册场景：先发整组媒体，再按顺序补发文本。
+  2. **失败重试**：`sendContents()` 捕获 `code == 400 && message.contains("caption is too long")` 时，把本组所有 caption 全部降级为文本并**自动重试一次**，不再 `finish(error)` 中止整批复制。覆盖预检口径与服务端计数不一致的情况。
+- 覆盖面：单条与相册、`ChannelCloner` / `RestrictedContentSaver` / ShareController 的 noforwards 回退全部走 `ContentCopySender`，一处修复全部生效。Bot API / Cloudflare 中转通道的 `copyMessage` 同样受 1024 限制，失败后会落到本地通道，由本修复兜底。
+- 已知限制：拆出来的文本消息与媒体在时间上紧邻但不是同一条消息（Telegram 本身不允许 >1024 的媒体说明，官方 App 也这样做）；进度计数 `sent` 仍按源消息数计，不把拆分文本算进去。
+
 ---
 
 ## 🚀 怎么继续改（操作手册）
