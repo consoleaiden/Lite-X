@@ -185,24 +185,6 @@ jobs:
           echo "--- local.properties ---"
           sed 's/^\(telegram.api_id=\).*/\1***/; s/^\(telegram.api_hash=\).*/\1***/' local.properties
 
-      - name: Validate flavor against native whitelist
-        # app/jni/CMakeLists.txt only accepts a subset of the Gradle flavors;
-        # fail in 5 seconds instead of ~1 hour into configureCMake.
-        run: |
-          set -e
-          PATTERN=$(grep -m1 -o 'MATCHES "[^"]*"' app/jni/CMakeLists.txt | sed 's/.*MATCHES "//; s/"$//')
-          echo "native whitelist: $PATTERN"
-          if [ -z "$PATTERN" ]; then
-            echo "::warning::could not read whitelist from app/jni/CMakeLists.txt, skipping check"
-            exit 0
-          fi
-          if echo "$FLAVOR" | grep -Eq "$PATTERN"; then
-            echo "flavor '$FLAVOR' is accepted by the native build"
-          else
-            echo "::error::flavor '$FLAVOR' is rejected by app/jni/CMakeLists.txt ($PATTERN) - pick a different flavor"
-            exit 1
-          fi
-
       - name: Prepare signing keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -244,12 +226,23 @@ jobs:
           set -e
           chmod +x gradlew
           FLAVOR_CAP="$(echo "${FLAVOR:0:1}" | tr 'a-z' 'A-Z')${FLAVOR:1}"
-          ABI_CAP="$(echo "${ABI:0:1}" | tr 'a-z' 'A-Z')${ABI:1}"
-          TASK="assemble${FLAVOR_CAP}${ABI_CAP}${BUILD_TYPE}"
+          # Upstream replaced per-ABI build variants with standard ABI splits:
+          # one task per flavor, the ABI is selected via android.injected.build.abi.
+          TASK="assemble${FLAVOR_CAP}${BUILD_TYPE}"
           echo "Gradle task: $TASK"
           EXTRA_ARGS=""
+          case "$ABI" in
+            arm64) ABI_FILTER="arm64-v8a" ;;
+            arm32) ABI_FILTER="armeabi-v7a" ;;
+            x86)   ABI_FILTER="x86" ;;
+            x64)   ABI_FILTER="x86_64" ;;
+            *)     ABI_FILTER="" ;;
+          esac
+          if [ -n "$ABI_FILTER" ]; then
+            EXTRA_ARGS="$EXTRA_ARGS -Pandroid.injected.build.abi=$ABI_FILTER"
+          fi
           if [ "$FLAVOR" = "legacy" ]; then
-            EXTRA_ARGS="-PuseLegacyNdk=true"
+            EXTRA_ARGS="$EXTRA_ARGS -PuseLegacyNdk=true"
           fi
           # baked into BuildConfig.CI_BUILD_NUMBER so that two builds of the same
           # app version can be told apart by the in-app updater

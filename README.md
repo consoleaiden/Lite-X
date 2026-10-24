@@ -190,6 +190,21 @@
   其他错误（如消息被删除）仍直接终止并报错，与既有行为一致。
 - 版本成本：`copied` 计数保持按源消息数统计，转发成功即 `+= ids.length`，与本地通道口径一致。
 
+### 19. 上游同步（1834）
+- 基线定位：上游 TGX-Android/Telegram-X 的 `8b7c7fcf3`（2026-10-15）与本地树 blob 差异最小，判定为 fork 基线；其后的 **38 个提交**全部融入。
+- 融合方法：把文件分成三类——D1（本地初始 vs 上游基线，51 个预存定制）、D2（本地初始 vs 上游 main，38 个会话定制）、U（基线 vs main，55 个更新）；**U∩(D1∪D2) 只有 5 个文件**需要手工处理：
+  - `app/build.gradle.kts`、`U.java`、`Settings.java`：`git merge-file` 三方合并（base=基线），**零冲突**，本地定制全部保留（`CI_BUILD_NUMBER`、`setEnableDecoderFallback`、`120000` 缓冲、自定义 Settings flag 等）；
+  - `version.properties` / `README.md`：上游无实质新键，保留本地版本。
+  - 其余 50 个 CLEAN 文件直接采用上游 main 版本。
+- 上游重点变化：
+  1. **ABI 从 flavor 改为 splits**：`assembleMarshmallowArm64Release` 这类变体没了，改为 `assembleMarshmallowRelease` + `-Pandroid.injected.build.abi=arm64-v8a`；APK 文件名也去掉 `-arm` 后缀。CI 工作流已同步改写。
+  2. **BuildConfig 字段改名**：`FLAVOR_SDK`→`FLAVOR`、`LAB_FLAVOR`→`GENERATING_BASELINE_PROFILE`，`FLAVOR_ABI` 删除（代码里 `U.java` 等已随上游更新）。
+  3. **Gradle 9.8.2 + buildSrc 重构**：`AppConfigurationPlugin` 新增 `generateBaselineProfile` / `useLegacyNdk` 等 gradle flag（默认 false），legacy NDK 仍走 `-PuseLegacyNdk=true`。
+  4. **TDLib 升级**（子模块 → `tdlib/td@a94b83d`）、新增 `libprisma` 子模块、文本绘制优化、聊天页键盘状态修复、Room 反射构造保留修复、依赖更新。
+  5. **删除 `:baseline-profile` 模块**：改为 generated profiles 直接放 `src/{latest,qrs,tens}Release/generated/baselineProfiles/`，且**仅当 `-PgenerateBaselineProfile=true` 时才消费**（`gradleFlag` 默认 false）——正常 CI 构建（含 marshmallow）完全不引用，无缺文件风险。
+  6. `CMakeLists.txt` 移除 flavor 白名单 → 已知坑 #1 的「configureCMake 1 小时后失败」风险随之消失，CI 里的 whitelist 校验步骤一并删除。
+- 本地定制保留核查：README（全部章节）、`version.properties`（1834）、`U.java`、`Settings.java`、`build.gradle.kts`（`ciBuildNumber`）、`.github/workflows/build-apk.yml`（触发条件 / 发布 tag / CI_BUILD_NUMBER）——逐处确认。
+
 
 ---
 
@@ -224,7 +239,7 @@
 
 ## ⚠️ 已知坑（改之前必读）
 
-1. **flavor 只能选 4 个**：`app/jni/CMakeLists.txt` 白名单 `legacy|lollipop|marshmallow|latest`。Gradle 侧还有 `qrs`/`tens`，选了必在 `configureCMake` 失败（约 1 小时后）。手机 Android 12(API31) 用 **marshmallow**。
+1. **flavor 只能选 4 个**：`legacy|lollipop|marshmallow|latest`（1834 起白名单校验从 `CMakeLists.txt` 移到了 buildSrc 逻辑，选了 `qrs`/`tens` 仍可能构建失败或产出无用包）。手机 Android 12(API31) 用 **marshmallow**。**注意**：上游已把 ABI 从 flavor 变体改为 splits，任务名不再有 `-arm64`/`-arm32` 后缀，单 ABI 构建用 `assemble<Flavor>Release` + `-Pandroid.injected.build.abi=arm64-v8a`（CI 工作流已适配）。
 2. **TdApi 版本差异**：本项目 tdlib 子模块的 `ReplyMarkupInlineKeyboard` 只有 `(rows, forceReply)` 构造，**没有** `isPersistent`/`placeholder`。动 TdApi 前先对 `https://raw.githubusercontent.com/TGX-Android/tdlib/<commit>/src/main/java/org/drinkless/tdlib/TdApi.java` 比对。
 3. **云端语言包优先级高于 res**：改品牌/文案要么用新 key 放 `res/values/local_strings.xml`，要么在 `Lang.applyBranding()` 里替换。新增字符串**不要**改 `strings.xml`（它是翻译平台导出），统一放 `local_strings.xml`，且中文里的英文双引号必须转义 `\"`。
 4. **发布 tag 与触发条件的死循环**：发布 tag 形如 `v1819000-13`，所以工作流 `push.tags` 必须保持 `build-*`；若改回 `v*`，会出现「发布 → 触发构建 → 再发布」。
