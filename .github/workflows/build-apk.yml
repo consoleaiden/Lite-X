@@ -253,26 +253,14 @@ jobs:
         run: |
           set -e
           mkdir -p apk-out
-          # AGP 9 no longer mirrors final APKs into app/build/outputs/apk.
-          # Prefer the IDE redirect listing (exact final APK paths), then fall
-          # back to searching known directories, then the whole build tree.
-          REDIRECT=$(find app/build/intermediates -name 'redirect.txt' -path '*apk_ide_redirect_file*' 2>/dev/null | head -1)
-          if [ -n "$REDIRECT" ] && [ -s "$REDIRECT" ]; then
-            echo "::group::APK listing: $REDIRECT"
-            cat "$REDIRECT"
-            echo "::endgroup::"
-            while IFS= read -r p; do
-              [ -z "$p" ] && continue
-              if [ -f "app/$p" ]; then cp "app/$p" apk-out/; else cp "$p" apk-out/; fi
-            done < "$REDIRECT"
-          fi
+          # AGP 9.4 puts final APKs in app/build/intermediates/apk/<flavor>/<buildType>/
+          # (confirmed via apk_ide_redirect_file listing) instead of app/build/outputs/apk.
+          echo "::group::APK candidates"
+          find app/build/intermediates/apk app/build/outputs/apk -name '*.apk' -type f 2>/dev/null || true
+          echo "::endgroup::"
+          find app/build/intermediates/apk app/build/outputs/apk -name '*.apk' -type f -exec cp {} apk-out/ \; 2>/dev/null || true
           if [ -z "$(ls -A apk-out 2>/dev/null)" ]; then
-            echo "::warning::no APK via listing, searching known directories"
-            find app/build/outputs/apk app/build/intermediates/apk app/build/intermediates/apk_for_local_deployment \
-              -name '*.apk' -type f -exec cp {} apk-out/ \; 2>/dev/null || true
-          fi
-          if [ -z "$(ls -A apk-out 2>/dev/null)" ]; then
-            echo "::warning::still no APK, searching whole app/build tree"
+            echo "::warning::no APK in intermediates/apk or outputs/apk, searching whole app/build"
             find app/build -name '*.apk' -type f -exec cp {} apk-out/ \;
           fi
           ls -lh apk-out
