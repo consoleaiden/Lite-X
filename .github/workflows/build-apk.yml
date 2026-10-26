@@ -241,6 +241,10 @@ jobs:
           if [ -n "$ABI_FILTER" ]; then
             EXTRA_ARGS="$EXTRA_ARGS -Pandroid.injected.build.abi=$ABI_FILTER"
           fi
+          # any android.injected.* property makes AGP treat the build as IDE-driven
+          # and bake android:testOnly="true" into the manifest, which blocks normal
+          # installs ("INSTALL_FAILED_TEST_ONLY"); opt out explicitly
+          EXTRA_ARGS="$EXTRA_ARGS -Pandroid.injected.testOnly=false"
           if [ "$FLAVOR" = "legacy" ]; then
             EXTRA_ARGS="$EXTRA_ARGS -PuseLegacyNdk=true"
           fi
