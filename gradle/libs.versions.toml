@@ -73,6 +73,7 @@ google-play-integrity-latest = "1.6.0"
 google-play-services-base-latest = "18.11.1"
 google-play-services-basement-latest = "18.12.0"
 google-play-services-maps-latest = "20.1.0"
+google-play-services-maps-marshmallow = "19.2.0" # 20.0.0+ requires minSdk 24
 google-play-services-location-latest = "21.4.0"
 google-play-services-safetynet-latest = "18.1.0"
 google-play-services-mlkit-barcode-scanning-latest = "18.3.1"
@@ -258,6 +259,7 @@ google-play-services-basement-latest = { module = "com.google.android.gms:play-s
 
 google-play-services-maps-legacy = { module = "com.google.android.gms:play-services-maps", version.ref = "google-play-services-maps-legacy" }
 google-play-services-maps-lollipop = { module = "com.google.android.gms:play-services-maps", version.ref = "google-play-services-maps-lollipop" }
+google-play-services-maps-marshmallow = { module = "com.google.android.gms:play-services-maps", version.ref = "google-play-services-maps-marshmallow" }
 google-play-services-maps-latest = { module = "com.google.android.gms:play-services-maps", version.ref = "google-play-services-maps-latest" }
 
 google-play-services-location-legacy = { module = "com.google.android.gms:play-services-location", version.ref = "google-play-services-location-legacy" }

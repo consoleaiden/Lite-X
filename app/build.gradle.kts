@@ -1035,6 +1035,7 @@ dependencies {
   flavorImplementation(
     libs.google.play.services.maps.legacy,
     libs.google.play.services.maps.lollipop,
+    libs.google.play.services.maps.marshmallow,
     libs.google.play.services.maps.latest
   )
   flavorImplementation(
