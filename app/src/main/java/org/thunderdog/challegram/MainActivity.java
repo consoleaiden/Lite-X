@@ -542,20 +542,11 @@ public class MainActivity extends BaseActivity implements GlobalAccountListener,
   }
 
   private void showExperimentalAlert () {
-    if (BuildConfig.EXPERIMENTAL && !BuildConfig.DEBUG) {
-      ViewController<?> c = navigation.getCurrentStackItem();
-      if (c != null) {
-        c.openAlert(R.string.ExperimentalBuildTitle,
-          Strings.buildMarkdown(c, Lang.getStringSecure(R.string.ExperimentalBuildInfo), (view, span, clickedText) -> {
-            TD.handleLegacyClick(c, clickedText, span);
-            return true;
-          }),
-          Lang.getOK(),
-          (dialog, which) -> dialog.dismiss(),
-          ViewController.ALERT_HAS_LINKS | ViewController.ALERT_NO_CANCEL | ViewController.ALERT_NO_CANCELABLE
-        );
-      }
-    }
+    // Lite-X: experimental-build warning removed on purpose.
+    // Our builds are flagged as experimental only because the application id
+    // matches the "example" pattern (org.example.*), not because of the code
+    // itself, so the warning appeared on every launch. To restore the stock
+    // behaviour, bring back the upstream body of this method.
   }
 
   public final ViewController<?> generateUnauthorizedController (Tdlib tdlib) {

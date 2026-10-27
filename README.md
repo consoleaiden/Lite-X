@@ -15,7 +15,7 @@
 | 项 | 值 |
 | --- | --- |
 | 应用名 | **Lite X**（仓库 Variables `APP_NAME`） |
-| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1829` → **1829000** |
+| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1837` → **1837000** |
 | flavor / ABI | `marshmallow`（minSdk 23）+ `arm64-v8a` / `armeabi-v7a` |
 | 构建方式 | GitHub Actions `.github/workflows/build-apk.yml`（`workflow_dispatch`），约 22 分钟 |
 | 应用内更新 | 读本仓库 `/releases/latest` |
@@ -226,6 +226,13 @@
   - 按钮绘制统一在 `TGMessage.draw()` 里 `drawContent` 之后（`drawCollapseToggle`）：内容右上角画 26dp 半透明圆 + 白色上三角（收起语义），命中矩形由 `getCollapseToggleRect()` 计算，`drawCollapseToggle` 与 `handleCollapseToggleTouch` 共用同一矩形，避免视觉与热区错位。
   - 触摸在 `TGMessage.onTouchEvent` 最前面拦截（`handleCollapseToggleTouch`），因此 `TGMessageText` / `TGMessageMedia` 的 `super` 调用天然覆盖两类消息；折叠态的媒体块整块可点展开（`handleCollapsedMediaTouch`，在 `mosaicWrapper.onTouchEvent` 之前，避免误开大图）。
   - 折叠/展开都会走 `rebuildAndUpdateContent()`，高度变化经 `manager.onMessageHeightChanged()` 通知列表，不会出现留白或重叠。
+
+### 22. 去掉「实验性构建」启动警告 + 恢复通知（1837）
+- **根因**：CI 生成的 `local.properties` 里 `app.id=org.example.tgx`（`${APP_ID:-org.example.tgx}` 的默认值），而 `buildSrc/.../AppConfigurationSource.kt` 把匹配 `^(com|org)\.example(\.[a-z]+)+$` 的包名一律判为 `isExperimentalBuild=true` → `BuildConfig.EXPERIMENTAL=true`。签名、代码、flavor 都无关，所以**每次启动都会弹**（`MainActivity.showExperimentalAlert()`，条件 `EXPERIMENTAL && !DEBUG`，两个调用点：崩溃恢复分支 + `initController()` 末尾）。
+- **为什么不改包名**：改 `app.id` 等于换一个应用，无法覆盖升级、且会丢本地数据；改 `EXPERIMENTAL` 判定又会让 `google-services` 插件在 CI 上被启用（没有 `google-services.json` 会直接构建失败）。所以只在代码层做两处定点修改。
+- **改动 1**：`MainActivity.showExperimentalAlert()` 方法体清空（保留方法签名与调用点，回滚只需还原方法体）。
+- **改动 2**：`Config.FORCE_DISABLE_NOTIFICATIONS` 由 `BuildConfig.EXPERIMENTAL && !BuildConfig.DEBUG` 改为 `false`。该常量是实验版**强制丢弃全部消息通知**的开关（`Tdlib.updateNotificationParameters` 把 `notification_group_count_max` 置 0、`TdlibNotificationHelper.accept()` 全部返回 false），也就是提示里「不能重新开启通知」的真实含义。置 false 后通知参数与正式版一致（group 25 / size 7~10）。
+- **注意**：这个包没有接 FCM（实验版不启用 google-services），所以后台推送仍依赖应用自身的长连接存活；前台/服务存活期间的通知立即恢复正常。
 
 
 
