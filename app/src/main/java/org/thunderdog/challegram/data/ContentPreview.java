@@ -159,7 +159,9 @@ public class ContentPreview {
   public ContentPreview (@Nullable Emoji emoji, int placeholderText, @Nullable TdApi.FormattedText formattedText, boolean isTranslatable, boolean hideAuthor, @Nullable Emoji parentEmoji) {
     this.emoji = emoji;
     this.placeholderText = placeholderText;
-    this.formattedText = formattedText;
+    // previews (chat list, reply snippets) show channel content, so they are masked too
+    TdApi.FormattedText masked = ContentFilter.maskSensitiveWords(formattedText);
+    this.formattedText = masked != null ? masked : formattedText;
     this.isTranslatable = isTranslatable;
     this.hideAuthor = hideAuthor;
     this.parentEmoji = parentEmoji;
