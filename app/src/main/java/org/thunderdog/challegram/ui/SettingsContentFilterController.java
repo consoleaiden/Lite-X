@@ -58,6 +58,8 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
           view.getToggler().setRadioEnabled(ContentFilter.isEnabled(), isUpdate);
         } else if (id == R.id.btn_contentFilterBlockAds) {
           view.getToggler().setRadioEnabled(ContentFilter.blockAds(), isUpdate);
+        } else if (id == R.id.btn_contentFilterNoImages) {
+          view.getToggler().setRadioEnabled(ContentFilter.isNoImagesEnabled(), isUpdate);
         } else if (id == R.id.btn_contentFilterModeHide) {
           view.getToggler().setRadioEnabled(ContentFilter.getMode() == ContentFilter.MODE_HIDE, isUpdate);
         } else if (id == R.id.btn_contentFilterModeCollapse) {
@@ -122,6 +124,14 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
     items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_contentFilterModeCollapse, 0, R.string.ContentFilterModeCollapse));
     items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
     items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.ContentFilterModeCollapseInfo));
+
+    // == No images mode ==
+
+    items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, R.string.NoImagesSection));
+    items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
+    items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_contentFilterNoImages, 0, R.string.NoImagesEnabled));
+    items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
+    items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.NoImagesEnabledInfo));
 
     List<ContentFilter.Rule> rules = ContentFilter.getRules();
     items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, Lang.getStringBold(R.string.ContentFilterRules, rules.size())));
@@ -216,6 +226,8 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
       adapter.updateValuedSettingById(R.id.btn_contentFilterModeCollapse);
     } else if (id == R.id.btn_contentFilterBlockAds) {
       ContentFilter.setBlockAds(adapter.toggleView(v));
+    } else if (id == R.id.btn_contentFilterNoImages) {
+      ContentFilter.setNoImagesEnabled(adapter.toggleView(v));
     } else if (id == R.id.btn_contentFilterToggleAdUrls) {
       adUrlsExpanded = !adUrlsExpanded;
       buildCells();

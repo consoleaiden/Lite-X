@@ -40,9 +40,11 @@ public class ContentFilter {
   private static final String KEY_ENABLED = "settings_content_filter_enabled";
   private static final String KEY_MODE = "settings_content_filter_mode";
   private static final String KEY_RULES = "settings_content_filter_rules";
+  private static final String KEY_NO_IMAGES = "settings_content_filter_no_images";
 
   private static Boolean enabled;
   private static Integer mode;
+  private static Boolean noImages;
   private static List<Rule> rules;
   private static int version = 1;
 
@@ -69,6 +71,22 @@ public class ContentFilter {
   public static void setMode (int value) {
     mode = value;
     Settings.instance().putInt(KEY_MODE, value);
+    bumpVersion();
+  }
+
+  /**
+   * "No images" mode: photos and videos inside channel posts are collapsed into a
+   * compact summary block until the user explicitly expands them.
+   */
+  public static boolean isNoImagesEnabled () {
+    if (noImages == null)
+      noImages = Settings.instance().getBoolean(KEY_NO_IMAGES, false);
+    return noImages;
+  }
+
+  public static void setNoImagesEnabled (boolean value) {
+    noImages = value;
+    Settings.instance().putBoolean(KEY_NO_IMAGES, value);
     bumpVersion();
   }
 

@@ -1448,6 +1448,7 @@
   <item type="id" name="btn_contentFilterEnabled" />
   <item type="id" name="btn_contentFilterModeHide" />
   <item type="id" name="btn_contentFilterModeCollapse" />
+  <item type="id" name="btn_contentFilterNoImages" />
   <item type="id" name="btn_contentFilterAddRule" />
   <item type="id" name="btn_contentFilterRemoveRule" />
   <item type="id" name="btn_contentFilterEditRule" />

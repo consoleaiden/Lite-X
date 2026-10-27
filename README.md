@@ -216,6 +216,17 @@
   - **挂载点**：`TD.getUserName`（所有用户名称，含气泡内发送者名）、`Tdlib.chatTitle`（频道/群名称，私聊走用户名分支）、`ProfileController.setDescription`（频道/群/用户简介）。为避免 `chatTitle → userDisplayName → getUserName` 这种嵌套调用重复替换，`maskSensitiveWords` 用 `ThreadLocal` 做了重入保护（拼音模式下重复替换会把 `FL` 这类首字母再打成 `**`）。
   - 生效范围与开关：默认关闭；开关/模式/词库变更都会 `bumpVersion()`，`ChatsController` 与 `MessagesController` 已有的版本比对逻辑会自动重建列表与消息。
 
+### 21. 无图模式 + 双向折叠（1836）
+- **无图模式**（`ContentFilter.isNoImagesEnabled` / `setNoImagesEnabled`，Key `settings_content_filter_no_images`，默认关）：开关在「内容过滤 → 无图模式」。
+  - 生效条件 `TGMessage.isNoImagesModeApplicable()` = 开关开 ＋ `isChannel()`（`msg.isChannelPost`）＋ 消息本身含 photo/video（`hasCollapsibleMediaContent()`，相册按 `MosaicWrapper` 的 item 列表逐项判断）。
+  - 折叠态：`TGMessageMedia` 不画 mosaic，改画一行圆角占位条（高 60dp，文字 `共 N 张图片、M 个视频，点击展开`）；`getMediaWidth/getMediaHeight` 代替 `mosaicWrapper.getWidth/getHeight`，让 `getContentWidth/getContentHeight`、气泡高度、caption 位置、点击命中区域全部自动跟随折叠态；caption 仍然照常显示。
+  - 展开态再点右上角按钮即可折回，与「折叠提示」共用同一套按钮与触摸逻辑。
+- **双向折叠**（两处共用）：
+  - `TGMessage` 新增 `collapseContentFilter()` 与 `noImagesExpanded` 状态机（`expandNoImages/collapseNoImages`），`toggleCollapsedContent()` 统一处理"当前该折哪一块"。
+  - 按钮绘制统一在 `TGMessage.draw()` 里 `drawContent` 之后（`drawCollapseToggle`）：内容右上角画 26dp 半透明圆 + 白色上三角（收起语义），命中矩形由 `getCollapseToggleRect()` 计算，`drawCollapseToggle` 与 `handleCollapseToggleTouch` 共用同一矩形，避免视觉与热区错位。
+  - 触摸在 `TGMessage.onTouchEvent` 最前面拦截（`handleCollapseToggleTouch`），因此 `TGMessageText` / `TGMessageMedia` 的 `super` 调用天然覆盖两类消息；折叠态的媒体块整块可点展开（`handleCollapsedMediaTouch`，在 `mosaicWrapper.onTouchEvent` 之前，避免误开大图）。
+  - 折叠/展开都会走 `rebuildAndUpdateContent()`，高度变化经 `manager.onMessageHeightChanged()` 通知列表，不会出现留白或重叠。
+
 
 
 ---

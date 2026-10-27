@@ -2055,6 +2055,9 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
       drawContent(view, c, pContentX, pContentY, pContentMaxWidth);
     }
 
+    // Collapse button shown over content expanded by the user
+    drawCollapseToggle(c);
+
     if (hasBubble) {
       if (needBubbleCornerFix()) {
         int padding = getBubbleContentPadding();
@@ -2999,6 +3002,9 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
   private float mInitialTouchY;
 
   public boolean onTouchEvent (MessageView view, MotionEvent e) {
+    if (handleCollapseToggleTouch(e)) {
+      return true;
+    }
     /*if ((flags & FLAG_HEADER_ENABLED) == 0 && (msg.forwardInfo == null || forwardInfo == null) && replyData == null && (inlineKeyboard == null || inlineKeyboard.isEmpty())) {
       return false;
     }*/
@@ -4367,6 +4373,150 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
       return true;
     }
     return false;
+  }
+
+  /**
+   * Collapses a previously expanded message back into the content filter placeholder.
+   * @return true if this call actually collapsed the message
+   */
+  public boolean collapseContentFilter () {
+    if (isContentFiltered() && contentFilterExpanded) {
+      contentFilterExpanded = false;
+      return true;
+    }
+    return false;
+  }
+
+  // == No images mode ==
+
+  private boolean noImagesExpanded;
+
+  /**
+   * Whether this message carries photo/video content that the "no images" mode can hide.
+   * Overridden by message types that are able to display media.
+   */
+  protected boolean hasCollapsibleMediaContent () {
+    return false;
+  }
+
+  /** Whether the "no images" mode applies to this particular message. */
+  public final boolean isNoImagesModeApplicable () {
+    return ContentFilter.isNoImagesEnabled() && isChannel() && hasCollapsibleMediaContent();
+  }
+
+  /** Whether the photo/video block is currently collapsed into a summary row. */
+  public final boolean isNoImagesCollapsed () {
+    return isNoImagesModeApplicable() && !noImagesExpanded;
+  }
+
+  /** Whether the photo/video block was explicitly expanded by the user. */
+  public final boolean isNoImagesExpanded () {
+    return isNoImagesModeApplicable() && noImagesExpanded;
+  }
+
+  public boolean expandNoImages () {
+    if (isNoImagesCollapsed()) {
+      noImagesExpanded = true;
+      return true;
+    }
+    return false;
+  }
+
+  public boolean collapseNoImages () {
+    if (isNoImagesExpanded()) {
+      noImagesExpanded = false;
+      return true;
+    }
+    return false;
+  }
+
+  // == Collapse toggle ==
+
+  private boolean collapseTogglePressed;
+
+  /** Whether the "collapse back" button should be drawn over the expanded content. */
+  private boolean isCollapseToggleVisible () {
+    return (isContentFiltered() && contentFilterExpanded) || isNoImagesExpanded();
+  }
+
+  private boolean getCollapseToggleRect (@NonNull RectF out) {
+    if (!isCollapseToggleVisible()) {
+      return false;
+    }
+    int size = Screen.dp(26f);
+    int right = getActualRightContentEdge() - Screen.dp(5f);
+    int top = getContentY() + Screen.dp(5f);
+    if (right - size < getContentX()) {
+      return false;
+    }
+    out.set(right - size, top, right, top + size);
+    return true;
+  }
+
+  /** Draws the button that collapses expanded content back into its placeholder. */
+  private void drawCollapseToggle (Canvas c) {
+    RectF rect = Paints.getRectF();
+    if (!getCollapseToggleRect(rect)) {
+      return;
+    }
+    final int cx = (int) rect.centerX();
+    final int cy = (int) rect.centerY();
+    final int radius = (int) (rect.width() / 2f);
+    c.drawCircle(cx, cy, radius, Paints.fillingPaint(collapseTogglePressed ? 0xaa000000 : 0x66000000));
+
+    final float halfWidth = Screen.dp(5f);
+    final float height = Screen.dp(3.5f);
+    Path path = Paints.getPath();
+    path.reset();
+    path.moveTo(cx, cy - height);
+    path.lineTo(cx + halfWidth, cy + height * .7f);
+    path.lineTo(cx - halfWidth, cy + height * .7f);
+    path.close();
+    c.drawPath(path, Paints.fillingPaint(0xffffffff));
+  }
+
+  private boolean handleCollapseToggleTouch (MotionEvent e) {
+    RectF rect = Paints.getRectF();
+    if (!getCollapseToggleRect(rect)) {
+      collapseTogglePressed = false;
+      return false;
+    }
+    rect.inset(-Screen.dp(6f), -Screen.dp(6f));
+    switch (e.getAction()) {
+      case MotionEvent.ACTION_DOWN:
+        collapseTogglePressed = rect.contains(e.getX(), e.getY());
+        return collapseTogglePressed;
+      case MotionEvent.ACTION_MOVE:
+        return collapseTogglePressed;
+      case MotionEvent.ACTION_CANCEL:
+        if (collapseTogglePressed) {
+          collapseTogglePressed = false;
+          invalidate();
+          return true;
+        }
+        return false;
+      case MotionEvent.ACTION_UP:
+        if (collapseTogglePressed) {
+          collapseTogglePressed = false;
+          if (rect.contains(e.getX(), e.getY())) {
+            toggleCollapsedContent();
+          } else {
+            invalidate();
+          }
+          return true;
+        }
+        return false;
+      default:
+        return collapseTogglePressed;
+    }
+  }
+
+  private void toggleCollapsedContent () {
+    boolean changed = isContentFiltered() && contentFilterExpanded ? collapseContentFilter() : collapseNoImages();
+    if (changed) {
+      rebuildAndUpdateContent();
+      invalidate();
+    }
   }
 
   public boolean onMessageClick (MessageView v, MessagesController c) {

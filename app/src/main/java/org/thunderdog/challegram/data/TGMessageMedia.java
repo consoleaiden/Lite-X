@@ -17,6 +17,7 @@ package org.thunderdog.challegram.data;
 import android.graphics.Canvas;
 import android.graphics.RectF;
 import android.os.SystemClock;
+import android.text.TextPaint;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewParent;
@@ -50,6 +51,7 @@ import org.thunderdog.challegram.util.text.TextWrapper;
 import java.util.ArrayList;
 
 import me.vkryl.android.animator.FactorAnimator;
+import me.vkryl.core.ColorUtils;
 import me.vkryl.core.MathUtils;
 import me.vkryl.core.lambda.CancellableRunnable;
 import tgx.td.Td;
@@ -557,11 +559,13 @@ public class TGMessageMedia extends TGMessage {
   protected void onMessageCombinedWithOtherMessage (TdApi.Message otherMessage, boolean atBottom, boolean local) {
     checkCommonCaption();
     checkHasEditedMedia();
+    collapsedMediaSummary = null;
     mosaicWrapper.addItem(createMediaWrapper(otherMessage), atBottom);
   }
 
   @Override
   protected void onMessageCombinationRemoved (TdApi.Message message, int index) {
+    collapsedMediaSummary = null;
     boolean useFullWidth = useFullWidth();
     switch (mosaicWrapper.removeItem(message.id, index)) {
       case MosaicWrapper.MOSAIC_CHANGED: {
@@ -610,6 +614,15 @@ public class TGMessageMedia extends TGMessage {
 
   @Override
   protected void drawContent (MessageView view, Canvas c, int startX, int startY, int maxWidth, ComplexReceiver complexReceiver) {
+    if (isNoImagesCollapsed()) {
+      drawCollapsedMedia(c, startX, startY);
+      if (wrapper != null) {
+        float alpha = getTranslationLoadingAlphaValue();
+        wrapper.draw(c, getTextX(view, wrapper, false), getTextX(view, wrapper, true), Config.MOVE_BUBBLE_TIME_RTL_TO_LEFT ? 0 : getBubbleTimePartWidth(), startY + getMediaHeight() + Screen.dp(TEXT_MARGIN), null, alpha, view.getTextMediaReceiver());
+      }
+      return;
+    }
+
     final boolean clipped = useBubbles() && !useForward();
     final int saveCount = clipped ? ViewSupport.clipPath(c, getBubbleClipPath()) : Integer.MIN_VALUE;
     mosaicWrapper.draw(view, c, startX, startY, complexReceiver, useFullWidth());
@@ -660,7 +673,7 @@ public class TGMessageMedia extends TGMessage {
 
     if (wrapper != null) {
       float alpha = getTranslationLoadingAlphaValue();
-      wrapper.draw(c, getTextX(view, wrapper, false), getTextX(view, wrapper, true), Config.MOVE_BUBBLE_TIME_RTL_TO_LEFT ? 0 : getBubbleTimePartWidth(), startY + mosaicWrapper.getHeight() + Screen.dp(TEXT_MARGIN), null, alpha, view.getTextMediaReceiver());
+      wrapper.draw(c, getTextX(view, wrapper, false), getTextX(view, wrapper, true), Config.MOVE_BUBBLE_TIME_RTL_TO_LEFT ? 0 : getBubbleTimePartWidth(), startY + getMediaHeight() + Screen.dp(TEXT_MARGIN), null, alpha, view.getTextMediaReceiver());
     }
   }
 
@@ -673,7 +686,7 @@ public class TGMessageMedia extends TGMessage {
       if (useFullWidth())
         return view.getMeasuredWidth() - getRealContentX();
       int startX = getContentX();
-      return Math.max(startX + mosaicWrapper.getWidth(), startX + wrapper.getWidth());
+      return Math.max(startX + getMediaWidth(), startX + wrapper.getWidth());
     } else {
       return useBubbles() ? (useForward() ? getContentX() : getContentX() + xBubblePadding) : getRealContentX();
     }
@@ -829,7 +842,7 @@ public class TGMessageMedia extends TGMessage {
 
   @Override
   protected int getContentWidth () {
-    int mosaicWidth = mosaicWrapper != null ? mosaicWrapper.getWidth() : 0;
+    int mosaicWidth = getMediaWidth();
     return wrapper == null ?
       mosaicWidth :
       Math.max(mosaicWidth, wrapper.getWidth());
@@ -837,24 +850,154 @@ public class TGMessageMedia extends TGMessage {
 
   @Override
   protected int getContentHeight () {
-    int mosaicHeight = mosaicWrapper != null ? mosaicWrapper.getHeight() : 0;
+    int mosaicHeight = getMediaHeight();
     return wrapper == null ?
       mosaicHeight :
       mosaicHeight + wrapper.getHeight() + Screen.dp(TEXT_MARGIN) + (useBubbles() && !useForward() ? Screen.dp(TEXT_MARGIN) - getBubbleContentPadding() : 0);
+  }
+
+  // == No images mode ==
+
+  /** Height of the summary row shown instead of photos and videos while collapsed. */
+  private static final float COLLAPSED_MEDIA_HEIGHT = 60f;
+
+  private boolean collapsedMediaPressed;
+  private String collapsedMediaSummary;
+
+  @Override
+  protected boolean hasCollapsibleMediaContent () {
+    if (mosaicWrapper == null) {
+      return false;
+    }
+    int count = mosaicWrapper.getItemCount();
+    for (int i = 0; i < count; i++) {
+      MediaWrapper item = mosaicWrapper.getItem(i);
+      if (item != null && (item.isPhoto() || item.isVideo())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @Override
+  public boolean expandNoImages () {
+    boolean changed = super.expandNoImages();
+    if (changed) {
+      collapsedMediaPressed = false;
+    }
+    return changed;
+  }
+
+  /** Width of the media block: the real mosaic width, or the summary row width when collapsed. */
+  private int getMediaWidth () {
+    return mosaicWrapper != null ? mosaicWrapper.getWidth() : 0;
+  }
+
+  /** Height of the media block: the real mosaic height, or the summary row height when collapsed. */
+  private int getMediaHeight () {
+    if (isNoImagesCollapsed()) {
+      return Screen.dp(COLLAPSED_MEDIA_HEIGHT);
+    }
+    return mosaicWrapper != null ? mosaicWrapper.getHeight() : 0;
+  }
+
+  private String getCollapsedMediaSummary () {
+    if (collapsedMediaSummary == null) {
+      int photos = 0, videos = 0;
+      int count = mosaicWrapper != null ? mosaicWrapper.getItemCount() : 0;
+      for (int i = 0; i < count; i++) {
+        MediaWrapper item = mosaicWrapper.getItem(i);
+        if (item == null) {
+          continue;
+        }
+        if (item.isPhoto()) {
+          photos++;
+        } else if (item.isVideo()) {
+          videos++;
+        }
+      }
+      StringBuilder parts = new StringBuilder();
+      if (photos > 0) {
+        parts.append(Lang.getString(R.string.NoImagesPhotoCount, photos));
+      }
+      if (videos > 0) {
+        if (parts.length() > 0) {
+          parts.append(Lang.getString(R.string.NoImagesCountSeparator));
+        }
+        parts.append(Lang.getString(R.string.NoImagesVideoCount, videos));
+      }
+      collapsedMediaSummary = Lang.getString(R.string.NoImagesCollapsedSummary, parts.toString());
+    }
+    return collapsedMediaSummary;
+  }
+
+  private void drawCollapsedMedia (Canvas c, int startX, int startY) {
+    int width = getMediaWidth();
+    int height = getMediaHeight();
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+    final int textColor = getTextColorSet().defaultTextColor();
+    RectF rect = Paints.getRectF();
+    rect.set(startX, startY, startX + width, startY + height);
+    float radius = Screen.dp(12f);
+    c.drawRoundRect(rect, radius, radius, Paints.fillingPaint(ColorUtils.alphaColor(0.10f, textColor)));
+
+    TextPaint paint = Paints.getTextPaint15(textColor);
+    String text = getCollapsedMediaSummary();
+    float textWidth = U.measureText(text, paint);
+    // Leave room for the bubble time part drawn over the content
+    int reserved = drawBubbleTimeOverContent() ? Screen.dp(56f) : 0;
+    float textX = startX + (width - reserved - textWidth) / 2f;
+    float textY = startY + height / 2f - (paint.ascent() + paint.descent()) / 2f;
+    c.drawText(text, Math.max(startX + Screen.dp(8f), textX), textY, paint);
+  }
+
+  private boolean handleCollapsedMediaTouch (MotionEvent e) {
+    final int left = getContentX();
+    final int top = getContentY();
+    final int right = left + getMediaWidth();
+    final int bottom = top + getMediaHeight();
+    final boolean inside = e.getX() >= left && e.getX() <= right && e.getY() >= top && e.getY() <= bottom;
+    switch (e.getAction()) {
+      case MotionEvent.ACTION_DOWN:
+        collapsedMediaPressed = inside;
+        return inside;
+      case MotionEvent.ACTION_MOVE:
+        return collapsedMediaPressed;
+      case MotionEvent.ACTION_CANCEL:
+        collapsedMediaPressed = false;
+        return false;
+      case MotionEvent.ACTION_UP:
+        if (collapsedMediaPressed) {
+          collapsedMediaPressed = false;
+          if (inside && expandNoImages()) {
+            rebuildAndUpdateContent();
+            invalidate();
+          }
+          return true;
+        }
+        return false;
+      default:
+        return collapsedMediaPressed;
+    }
   }
 
   // Touch
 
   @Override
   public boolean onTouchEvent (MessageView view, MotionEvent e) {
+    if (isNoImagesCollapsed() && handleCollapsedMediaTouch(e)) {
+      return true;
+    }
     if (super.onTouchEvent(view, e)) {
       return true;
     }
 
     int cellLeft = getContentX();
     int cellTop = getContentY();
-    int cellRight = cellLeft + mosaicWrapper.getWidth();
-    int cellBottom = cellTop + mosaicWrapper.getHeight();
+    int cellRight = cellLeft + getMediaWidth();
+    int cellBottom = cellTop + getMediaHeight();
 
     if (wrapper != null && wrapper.onTouchEvent(view, e)) {
       return true;
@@ -912,8 +1055,8 @@ public class TGMessageMedia extends TGMessage {
     }
     int cellLeft = getContentX();
     int cellTop = getContentY();
-    int cellRight = cellLeft + mosaicWrapper.getWidth();
-    int cellBottom = cellTop + mosaicWrapper.getHeight();
+    int cellRight = cellLeft + getMediaWidth();
+    int cellBottom = cellTop + getMediaHeight();
 
     return !(isHot() && !isViewOnce()) || x < cellLeft || x > cellRight || y < cellTop || y > cellBottom;
   }
