@@ -205,6 +205,18 @@
   6. `CMakeLists.txt` 移除 flavor 白名单 → 已知坑 #1 的「configureCMake 1 小时后失败」风险随之消失，CI 里的 whitelist 校验步骤一并删除。
 - 本地定制保留核查：README（全部章节）、`version.properties`（1834）、`U.java`、`Settings.java`、`build.gradle.kts`（`ciBuildNumber`）、`.github/workflows/build-apk.yml`（触发条件 / 发布 tag / CI_BUILD_NUMBER）——逐处确认。
 
+### 20. 设置页折叠列表 + 敏感词屏蔽（1835）
+- **折叠列表**（`SettingsContentFilterController`）：`已屏蔽的链接`、`过滤规则`、`敏感词库` 三处列表改为默认只显示 3 条，超出部分由独立的「展开全部（共 N 条）／收起」行控制（`baseline_expand_more_24` / `baseline_expand_less_24` 图标 + 文案双标识）。展开状态保存在控制器字段里，`buildCells()` 重建后保持；列表项的管理能力不变（点链接行→确认取消屏蔽，点规则行→编辑/删除菜单，点敏感词行→确认删除）。
+- **正则示例**：规则列表下新增 `ContentFilterRegexExamples` 说明块（手机号、邮箱、邀请链接、关键词分组、刷屏、纯数字），正则输入框占位提示改为 `ContentFilterRegexHint`（`1[3-9][0-9]{9}` / `(加微信|返佣)`）。示例刻意避开反斜杠，避免 Android 字符串资源转义踩坑。
+- **敏感词屏蔽**（`ContentFilter` 新增 `SENSITIVE_MODE_MASK` / `SENSITIVE_MODE_PINYIN`）：
+  - 词库存 LevelDB（`settings_sensitive_filter_words`，一行一词），支持逗号/空格/分号分隔批量添加，大小写不敏感去重；
+  - 匹配用**手写 Aho–Corasick 自动机**（`WordMatcher`）：一次扫描拿到全部命中区间并合并重叠，长消息也只是一次线性遍历；词库变更时置空缓存重建；
+  - **替换恒等长**：`*` 模式逐字符替换；拼音模式对 CJK 用 GBK/GB2312 一级汉字按拼音排序的分段表取首字母（`0xB0A1`…`0xD7FA` 共 23 组），英文/数字/生僻字回落为 `*`。等长替换意味着 `FormattedText` 的 entity 偏移不需要重算，天然不会破坏加粗/链接/emoji 实体；
+  - **只影响显示**：`TGMessageText` 用 `maskedText` 建 `TextWrapper`，`this.text` 保留原文（复制/转发不受影响）；`TGMessageMedia` 同理用 `maskedCaption`；
+  - **挂载点**：`TD.getUserName`（所有用户名称，含气泡内发送者名）、`Tdlib.chatTitle`（频道/群名称，私聊走用户名分支）、`ProfileController.setDescription`（频道/群/用户简介）。为避免 `chatTitle → userDisplayName → getUserName` 这种嵌套调用重复替换，`maskSensitiveWords` 用 `ThreadLocal` 做了重入保护（拼音模式下重复替换会把 `FL` 这类首字母再打成 `**`）。
+  - 生效范围与开关：默认关闭；开关/模式/词库变更都会 `bumpVersion()`，`ChatsController` 与 `MessagesController` 已有的版本比对逻辑会自动重建列表与消息。
+
+
 
 ---
 

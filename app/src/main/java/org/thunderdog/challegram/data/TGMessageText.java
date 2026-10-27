@@ -285,6 +285,14 @@ public class TGMessageText extends TGMessage {
       animated = animated && Config.ENABLE_TEXT_ANIMATIONS && needAnimateChanges();
 
       this.text = text;
+      // sensitive words are masked for display only: this.text keeps the original
+      // so copying / forwarding is not affected, and the length is preserved so
+      // formatting entities stay valid
+      final TdApi.FormattedText maskedText;
+      {
+        TdApi.FormattedText masked = ContentFilter.maskSensitiveWords(text);
+        maskedText = masked != null ? masked : text;
+      }
       TextColorSet colorSet = isErrorMessage() ? TextColorSets.Regular.NEGATIVE : getTextColorSet();
       TextWrapper.TextMediaListener textMediaListener = (wrapper, updatedText, specificTextMedia) -> {
         if (effectiveWrapper == wrapper) {
@@ -301,15 +309,15 @@ public class TGMessageText extends TGMessage {
           .setEntities(TextEntity.valueOf(tdlib, translatedText, openParameters()), textMediaListener)
           .setHighlightText(getHighlightedText(Highlight.Pool.KEY_TEXT, translatedText.text))
           .setClickCallback(clickCallback());
-      } else if (text.entities != null || !parseEntities) {
-        wrapper = new TextWrapper(text.text, getTextStyleProvider(), colorSet)
-          .setEntities(TextEntity.valueOf(tdlib, text, openParameters()), textMediaListener)
-          .setHighlightText(getHighlightedText(Highlight.Pool.KEY_TEXT, text.text))
+      } else if (maskedText.entities != null || !parseEntities) {
+        wrapper = new TextWrapper(maskedText.text, getTextStyleProvider(), colorSet)
+          .setEntities(TextEntity.valueOf(tdlib, maskedText, openParameters()), textMediaListener)
+          .setHighlightText(getHighlightedText(Highlight.Pool.KEY_TEXT, maskedText.text))
           .setClickCallback(clickCallback());
       } else {
-        wrapper = new TextWrapper(text.text, getTextStyleProvider(), colorSet)
-          .setEntities(Text.makeEntities(text.text, Text.ENTITY_FLAGS_ALL, null, tdlib, openParameters()), textMediaListener)
-          .setHighlightText(getHighlightedText(Highlight.Pool.KEY_TEXT, text.text))
+        wrapper = new TextWrapper(maskedText.text, getTextStyleProvider(), colorSet)
+          .setEntities(Text.makeEntities(maskedText.text, Text.ENTITY_FLAGS_ALL, null, tdlib, openParameters()), textMediaListener)
+          .setHighlightText(getHighlightedText(Highlight.Pool.KEY_TEXT, maskedText.text))
           .setClickCallback(clickCallback());
       }
       wrapper.addTextFlags(Text.FLAG_BIG_EMOJI);

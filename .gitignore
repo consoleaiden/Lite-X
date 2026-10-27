@@ -24,3 +24,6 @@ libc++_shared.so
 /cloudflare/dist
 /cloudflare/.wrangler
 /cloudflare/.dev.vars
+
+# local build/debug helper scripts (may contain logs and credentials)
+_tools/

@@ -2382,6 +2382,13 @@ public class ProfileController extends ViewController<ProfileController.Args> im
         text = null;
       }
     }
+    if (text != null) {
+      // channel / group / user bio passes through the sensitive word filter
+      TdApi.FormattedText masked = org.thunderdog.challegram.unsorted.ContentFilter.maskSensitiveWords(text);
+      if (masked != null) {
+        text = masked;
+      }
+    }
     if (this.currentAbout == null || !Td.equalsTo(this.currentAbout, text)) {
       currentAbout = text;
       if (text != null) {

@@ -17,9 +17,13 @@ import androidx.annotation.Nullable;
 
 import org.drinkless.tdlib.TdApi;
 
+import java.nio.charset.Charset;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -416,6 +420,168 @@ public class ContentFilter {
     return new TdApi.ReplyMarkupInlineKeyboard(rows.toArray(new TdApi.InlineKeyboardButton[0][]), keyboard.forceReply);
   }
 
+  // == Sensitive words ==
+
+  public static final int SENSITIVE_MODE_MASK = 0;
+  public static final int SENSITIVE_MODE_PINYIN = 1;
+
+  private static final String KEY_SENSITIVE_ENABLED = "settings_sensitive_filter_enabled";
+  private static final String KEY_SENSITIVE_MODE = "settings_sensitive_filter_mode";
+  private static final String KEY_SENSITIVE_WORDS = "settings_sensitive_filter_words";
+
+  private static Boolean sensitiveEnabled;
+  private static Integer sensitiveMode;
+  private static List<String> sensitiveWords;
+  private static WordMatcher sensitiveMatcher;
+
+  /** Guards against double masking when one display path calls another (chatTitle -> userDisplayName -> TD.getUserName). */
+  private static final ThreadLocal<Boolean> MASKING = new ThreadLocal<>();
+
+  public static boolean isSensitiveEnabled () {
+    if (sensitiveEnabled == null)
+      sensitiveEnabled = Settings.instance().getBoolean(KEY_SENSITIVE_ENABLED, false);
+    return sensitiveEnabled;
+  }
+
+  public static void setSensitiveEnabled (boolean value) {
+    sensitiveEnabled = value;
+    Settings.instance().putBoolean(KEY_SENSITIVE_ENABLED, value);
+    bumpVersion();
+  }
+
+  public static int getSensitiveMode () {
+    if (sensitiveMode == null)
+      sensitiveMode = Settings.instance().getInt(KEY_SENSITIVE_MODE, SENSITIVE_MODE_MASK);
+    return sensitiveMode;
+  }
+
+  public static void setSensitiveMode (int value) {
+    sensitiveMode = value;
+    Settings.instance().putInt(KEY_SENSITIVE_MODE, value);
+    bumpVersion();
+  }
+
+  @NonNull
+  public static List<String> getSensitiveWords () {
+    if (sensitiveWords == null) {
+      List<String> parsed = new ArrayList<>();
+      Set<String> seen = new HashSet<>();
+      String raw = Settings.instance().getString(KEY_SENSITIVE_WORDS, "");
+      if (raw != null && !raw.isEmpty()) {
+        for (String line : raw.split("\n")) {
+          String word = line.trim();
+          if (!word.isEmpty() && seen.add(word.toLowerCase(java.util.Locale.ROOT)))
+            parsed.add(word);
+        }
+      }
+      sensitiveWords = parsed;
+    }
+    return sensitiveWords;
+  }
+
+  public static void setSensitiveWords (@NonNull List<String> words) {
+    List<String> cleaned = new ArrayList<>(words.size());
+    Set<String> seen = new HashSet<>();
+    for (String word : words) {
+      if (word == null)
+        continue;
+      String trimmed = word.trim();
+      if (!trimmed.isEmpty() && seen.add(trimmed.toLowerCase(java.util.Locale.ROOT)))
+        cleaned.add(trimmed);
+    }
+    sensitiveWords = cleaned;
+    sensitiveMatcher = null;
+    StringBuilder b = new StringBuilder();
+    for (String word : cleaned) {
+      if (b.length() > 0)
+        b.append('\n');
+      b.append(sanitize(word));
+    }
+    Settings.instance().putString(KEY_SENSITIVE_WORDS, b.toString());
+    bumpVersion();
+  }
+
+  /**
+   * Adds one or more words. Multiple words may be separated by commas or whitespace.
+   * @return how many words were actually added
+   */
+  public static int addSensitiveWords (@NonNull String raw) {
+    List<String> list = new ArrayList<>(getSensitiveWords());
+    Set<String> existing = new HashSet<>();
+    for (String word : list)
+      existing.add(word.toLowerCase(java.util.Locale.ROOT));
+    int added = 0;
+    for (String token : raw.split("[,，;；\\s]+")) {
+      String word = token.trim();
+      if (word.isEmpty() || !existing.add(word.toLowerCase(java.util.Locale.ROOT)))
+        continue;
+      list.add(word);
+      added++;
+    }
+    if (added > 0)
+      setSensitiveWords(list);
+    return added;
+  }
+
+  public static void removeSensitiveWordAt (int index) {
+    List<String> list = new ArrayList<>(getSensitiveWords());
+    if (index < 0 || index >= list.size())
+      return;
+    list.remove(index);
+    setSensitiveWords(list);
+  }
+
+  /**
+   * Replaces every occurrence of a sensitive word, keeping the text length intact so that
+   * formatting entities stay valid. Chinese characters become their pinyin initial in
+   * {@link #SENSITIVE_MODE_PINYIN}, everything else becomes an asterisk.
+   */
+  @Nullable
+  public static String maskSensitiveWords (@Nullable String input) {
+    if (input == null || input.isEmpty() || !isSensitiveEnabled())
+      return input;
+    if (Boolean.TRUE.equals(MASKING.get()))
+      return input;
+    List<String> words = getSensitiveWords();
+    if (words.isEmpty())
+      return input;
+    MASKING.set(Boolean.TRUE);
+    try {
+      if (sensitiveMatcher == null)
+        sensitiveMatcher = new WordMatcher(words);
+      List<int[]> ranges = sensitiveMatcher.findRanges(input);
+      if (ranges == null || ranges.isEmpty())
+        return input;
+      boolean pinyin = getSensitiveMode() == SENSITIVE_MODE_PINYIN;
+      char[] chars = input.toCharArray();
+      for (int[] range : ranges) {
+        for (int i = range[0]; i < range[1] && i < chars.length; i++) {
+          if (pinyin) {
+            char initial = pinyinInitial(chars[i]);
+            chars[i] = initial != 0 ? initial : '*';
+          } else {
+            chars[i] = '*';
+          }
+        }
+      }
+      return new String(chars);
+    } finally {
+      MASKING.remove();
+    }
+  }
+
+  /** @return a masked copy, or null when nothing changed */
+  @Nullable
+  public static TdApi.FormattedText maskSensitiveWords (@Nullable TdApi.FormattedText text) {
+    if (text == null || text.text == null || text.text.isEmpty())
+      return null;
+    String masked = maskSensitiveWords(text.text);
+    if (masked == null || masked.equals(text.text))
+      return null;
+    // replacement never changes the string length, so entity offsets remain valid
+    return new TdApi.FormattedText(masked, text.entities);
+  }
+
   /**
    * Bumped every time the filter configuration changes, so that UI layers can
    * tell whether they need to reload their content.
@@ -503,5 +669,164 @@ public class ContentFilter {
         return false;
       }
     }
+  }
+
+  // == Sensitive word matching internals ==
+
+  /**
+   * Minimal Aho-Corasick automaton: finds every dictionary occurrence in a single pass,
+   * which keeps masking cheap even for long message texts.
+   */
+  private static final class WordMatcher {
+    private final List<HashMap<Character, Integer>> children = new ArrayList<>();
+    private final List<Integer> fail = new ArrayList<>();
+    private final List<Integer> outLength = new ArrayList<>();
+
+    WordMatcher (@NonNull List<String> words) {
+      newNode();
+      for (String word : words) {
+        int state = 0;
+        for (int i = 0; i < word.length(); i++) {
+          char c = Character.toLowerCase(word.charAt(i));
+          Integer next = children.get(state).get(c);
+          if (next == null) {
+            next = newNode();
+            children.get(state).put(c, next);
+          }
+          state = next;
+        }
+        int len = word.length();
+        if (len > outLength.get(state))
+          outLength.set(state, len);
+      }
+      // build failure links breadth first
+      ArrayDeque<Integer> queue = new ArrayDeque<>();
+      for (Integer child : children.get(0).values()) {
+        fail.set(child, 0);
+        queue.add(child);
+      }
+      while (!queue.isEmpty()) {
+        int state = queue.removeFirst();
+        for (Map.Entry<Character, Integer> entry : children.get(state).entrySet()) {
+          char c = entry.getKey();
+          int child = entry.getValue();
+          int target = fail.get(state);
+          while (target != 0 && !children.get(target).containsKey(c))
+            target = fail.get(target);
+          Integer fallback = children.get(target).get(c);
+          fail.set(child, fallback != null && fallback != child ? fallback : 0);
+          if (outLength.get(fail.get(child)) > outLength.get(child))
+            outLength.set(child, outLength.get(fail.get(child)));
+          queue.add(child);
+        }
+      }
+    }
+
+    private int newNode () {
+      children.add(new HashMap<>());
+      fail.add(0);
+      outLength.add(0);
+      return children.size() - 1;
+    }
+
+    /** @return merged, ascending ranges of matched characters, or null when nothing matched */
+    @Nullable
+    List<int[]> findRanges (@NonNull String text) {
+      List<int[]> ranges = null;
+      int state = 0;
+      for (int i = 0; i < text.length(); i++) {
+        char c = Character.toLowerCase(text.charAt(i));
+        while (state != 0 && !children.get(state).containsKey(c))
+          state = fail.get(state);
+        Integer next = children.get(state).get(c);
+        state = next != null ? next : 0;
+        int len = outLength.get(state);
+        if (len > 0 && i - len + 1 >= 0) {
+          if (ranges == null)
+            ranges = new ArrayList<>();
+          ranges.add(new int[] {i - len + 1, i + 1});
+        }
+      }
+      if (ranges == null || ranges.size() < 2)
+        return ranges;
+      ranges.sort((a, b) -> Integer.compare(a[0], b[0]));
+      List<int[]> merged = new ArrayList<>(ranges.size());
+      int[] current = null;
+      for (int[] range : ranges) {
+        if (current == null) {
+          current = new int[] {range[0], range[1]};
+        } else if (range[0] <= current[1]) {
+          if (range[1] > current[1])
+            current[1] = range[1];
+        } else {
+          merged.add(current);
+          current = new int[] {range[0], range[1]};
+        }
+      }
+      if (current != null)
+        merged.add(current);
+      return merged;
+    }
+  }
+
+  /**
+   * Start code of every pinyin initial inside GB2312 level-1 (chars are sorted by pinyin),
+   * stored as {gbCode, initial} pairs. Level-2 and non-GB2312 characters are reported as 0
+   * and therefore fall back to an asterisk.
+   */
+  private static final int[] PINYIN_RANGES = {
+    0xB0A1, 'A', 0xB0C5, 'B', 0xB2C1, 'C', 0xB4EE, 'D', 0xB6EA, 'E', 0xB7A2, 'F',
+    0xB8C1, 'G', 0xB9FE, 'H', 0xBBF7, 'J', 0xBFA6, 'K', 0xC0AC, 'L', 0xC2E8, 'M',
+    0xC4C3, 'N', 0xC5B6, 'O', 0xC5BE, 'P', 0xC6DA, 'Q', 0xC8BB, 'R', 0xC8F6, 'S',
+    0xCBFA, 'T', 0xCDDA, 'W', 0xCEF4, 'X', 0xD1B9, 'Y', 0xD4D1, 'Z'
+  };
+  private static final int PINYIN_RANGE_END = 0xD7FA;
+
+  private static final HashMap<Character, Character> pinyinCache = new HashMap<>();
+  private static Charset gbkCharset;
+  private static boolean gbkChecked;
+
+  private static char pinyinInitial (char c) {
+    if (c < 0x4E00 || c > 0x9FFF)
+      return 0;
+    Character cached = pinyinCache.get(c);
+    if (cached != null)
+      return cached;
+    char result = 0;
+    Charset charset = gbk();
+    if (charset != null) {
+      byte[] bytes = String.valueOf(c).getBytes(charset);
+      if (bytes.length == 2) {
+        int code = ((bytes[0] & 0xFF) << 8) | (bytes[1] & 0xFF);
+        if (code >= PINYIN_RANGES[0] && code < PINYIN_RANGE_END) {
+          int last = PINYIN_RANGES.length / 2 - 1;
+          for (int i = 0; i <= last; i++) {
+            int start = PINYIN_RANGES[i * 2];
+            int end = i < last ? PINYIN_RANGES[(i + 1) * 2] : PINYIN_RANGE_END;
+            if (code >= start && code < end) {
+              result = (char) PINYIN_RANGES[i * 2 + 1];
+              break;
+            }
+          }
+        }
+      }
+    }
+    if (pinyinCache.size() > 4096)
+      pinyinCache.clear();
+    pinyinCache.put(c, result);
+    return result;
+  }
+
+  @Nullable
+  private static Charset gbk () {
+    if (!gbkChecked) {
+      gbkChecked = true;
+      try {
+        gbkCharset = Charset.forName("GBK");
+      } catch (Throwable t) {
+        gbkCharset = null;
+      }
+    }
+    return gbkCharset;
   }
 }

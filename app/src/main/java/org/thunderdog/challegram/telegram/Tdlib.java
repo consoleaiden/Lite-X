@@ -79,6 +79,7 @@ import org.thunderdog.challegram.tool.TGCountry;
 import org.thunderdog.challegram.tool.UI;
 import org.thunderdog.challegram.ui.EditRightsController;
 import org.thunderdog.challegram.unsorted.AppContext;
+import org.thunderdog.challegram.unsorted.ContentFilter;
 import org.thunderdog.challegram.unsorted.DeviceTokenRetrieverInstance;
 import org.thunderdog.challegram.unsorted.Passcode;
 import org.thunderdog.challegram.unsorted.Settings;
@@ -3280,7 +3281,14 @@ public class Tdlib implements TdlibProvider, Settings.SettingsChangeListener, Da
       return Lang.getString(R.string.EmojiSets);
     }
     final long userId = chatUserId(chat.id);
-    return userId != 0 ? cache().userDisplayName(userId, allowSavedMessages, shorten) : chat.title;
+    // private chats get their title from the user name, which is masked in TD.getUserName
+    return userId != 0 ? cache().userDisplayName(userId, allowSavedMessages, shorten) : maskTitle(chat.title);
+  }
+
+  /** Applies the sensitive word filter to titles shown in the chat list and chat header. */
+  private static String maskTitle (String title) {
+    String masked = ContentFilter.maskSensitiveWords(title);
+    return masked != null ? masked : title;
   }
 
   public long chatUserId (TdApi.Chat chat) {

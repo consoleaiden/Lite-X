@@ -2177,17 +2177,23 @@ public class TD {
 
   public static String getUserName (String firstName, String lastName) {
     if (StringUtils.isEmpty(firstName))
-      return lastName;
+      return maskSensitiveName(lastName);
     if (StringUtils.isEmpty(lastName))
-      return firstName;
-    return firstName + ' ' + lastName;
+      return maskSensitiveName(firstName);
+    return maskSensitiveName(firstName + ' ' + lastName);
+  }
+
+  /** Applies the sensitive word filter to user names shown across the UI. */
+  private static String maskSensitiveName (String name) {
+    String masked = org.thunderdog.challegram.unsorted.ContentFilter.maskSensitiveWords(name);
+    return masked != null ? masked : name;
   }
 
   public static String getUserSingleName (long userId, @Nullable TdApi.User user) {
     if (userId != 0 && user == null) {
       return "User#" + userId;
     }
-    return getFirstName(user);
+    return maskSensitiveName(getFirstName(user));
   }
 
   @Nullable

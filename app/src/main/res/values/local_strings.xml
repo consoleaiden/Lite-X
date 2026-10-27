@@ -21,7 +21,7 @@
   <string name="ContentFilterModeHideInfo">命中的消息直接不显示。</string>
   <string name="ContentFilterModeCollapse">折叠提示</string>
   <string name="ContentFilterModeCollapseInfo">命中的消息折叠成一行提示，点击该消息可展开查看原文。</string>
-  <string name="ContentFilterRules">过滤规则</string>
+  <string name="ContentFilterRules">过滤规则（%1$d）</string>
   <string name="ContentFilterNoRules">还没有添加任何规则。</string>
   <string name="ContentFilterAddRule">添加规则</string>
   <string name="ContentFilterRemoveRule">删除规则</string>
@@ -33,11 +33,33 @@
   <string name="ContentFilterInvalidRegex">正则表达式无效</string>
   <string name="ContentFilteredCollapsed">内容已被过滤，点击查看</string>
   <string name="ContentFilteredPreview">消息已被过滤</string>
+  <string name="ContentFilterRegexHint">例如：1[3-9][0-9]{9} 或 (加微信|返佣)</string>
+  <string name="ContentFilterRegexExamples">常用正则示例（不区分大小写）：\n• 手机号：1[3-9][0-9]{9}\n• 邮箱：[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+[.][a-z]{2,}\n• 邀请链接：t[.]me/ 或 joinchat/\n• 关键词分组：(加微信|加V信|返佣|推广)\n• 连续刷屏：([!！?？]){3,}\n• 整行纯数字：[0-9]{5,}</string>
+
+  <string name="SensitiveFilterSection">敏感词屏蔽</string>
+  <string name="SensitiveFilterEnabled">启用敏感词屏蔽</string>
+  <string name="SensitiveFilterEnabledInfo">开启后，命中敏感词的内容会被替换显示：消息正文与媒体说明、频道名称、频道简介、用户名称。仅影响本机显示，不会修改服务器上的原文，也不影响转发出去的内容。</string>
+  <string name="SensitiveFilterMode">替换方式</string>
+  <string name="SensitiveFilterModeMask">替换为等长的 * 号</string>
+  <string name="SensitiveFilterModePinyin">中文替换为拼音首字母</string>
+  <string name="SensitiveFilterModePinyinInfo">中文按拼音首字母替换（保留可读线索），英文、数字与其他字符仍替换为 * 号；生僻字取不到首字母时同样替换为 *。</string>
+  <string name="SensitiveFilterWords">敏感词库（%1$d）</string>
+  <string name="SensitiveFilterNoWords">还没有添加敏感词。</string>
+  <string name="SensitiveFilterAddWord">添加敏感词</string>
+  <string name="SensitiveFilterAddWordHint">输入敏感词，多个可用逗号或空格分隔</string>
+  <string name="SensitiveFilterRemoveWord">删除敏感词</string>
+  <string name="SensitiveFilterRemoveConfirm">确定从敏感词库删除该词？删除后已替换的内容会恢复显示。</string>
+  <string name="SensitiveFilterAddedToast">已添加 %1$d 个敏感词</string>
+  <string name="SensitiveFilterDuplicateToast">该敏感词已经在词库中</string>
+
+  <string name="FilterListShowMore">展开全部（共 %1$d 条）</string>
+  <string name="FilterListShowLess">收起</string>
+  <string name="FilterListDelete">删除</string>
 
   <string name="AdFilterSection">屏蔽广告</string>
   <string name="AdFilterEnabled">屏蔽系统广告</string>
   <string name="AdFilterEnabledInfo">开启后自动屏蔽：聊天列表中的代理赞助商广告、聊天中带\"广告 / Ad\"标识的推广消息，以及已手动屏蔽的链接。关闭后恢复显示。</string>
-  <string name="AdFilterBlockedUrls">已屏蔽的链接</string>
+  <string name="AdFilterBlockedUrls">已屏蔽的链接（%1$d）</string>
   <string name="AdFilterNoUrls">还没有屏蔽任何链接。长按聊天中的广告链接，选择\"屏蔽广告\"即可添加。</string>
   <string name="AdFilterBlockAction">屏蔽广告</string>
   <string name="AdFilterBlockedToast">已屏蔽该链接的广告</string>

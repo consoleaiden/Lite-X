@@ -365,6 +365,11 @@ public class TGMessageMedia extends TGMessage {
       }
       if (!Td.isEmpty(caption)) {
         TdApi.FormattedText fText = translatedText != null ? translatedText : caption;
+        // display-only masking, this.caption keeps the original caption
+        TdApi.FormattedText maskedCaption = ContentFilter.maskSensitiveWords(fText);
+        if (maskedCaption != null) {
+          fText = maskedCaption;
+        }
         if (isContentFiltered() && !isContentFilterExpanded()) {
           // Collapsed by the content filter: show a placeholder instead of the caption
           this.wrapper = new TextWrapper(Lang.getString(R.string.ContentFilteredCollapsed), getTextStyleProvider(), getTextColorSet())
