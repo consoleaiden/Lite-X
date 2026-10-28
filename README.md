@@ -15,7 +15,7 @@
 | 项 | 值 |
 | --- | --- |
 | 应用名 | **Lite X**（仓库 Variables `APP_NAME`） |
-| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1839` → **1839000** |
+| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1840` → **1840000** |
 | flavor / ABI | `marshmallow`（minSdk 23）+ `arm64-v8a` / `armeabi-v7a` |
 | 构建方式 | GitHub Actions `.github/workflows/build-apk.yml`（`workflow_dispatch`），约 22 分钟 |
 | 应用内更新 | 读本仓库 `/releases/latest` |
@@ -211,6 +211,24 @@
   1. `MainActivity.showExperimentalAlert()` 方法体清空——CI 生成的 `local.properties` 里 `app.id=org.example.tgx` 被构建脚本判为"示例/实验版"（`BuildConfig.EXPERIMENTAL=true`），导致每次启动弹「警告：实验性构建」；本 fork 有意使用该包名，弹窗不适用。
   2. `Config.FORCE_DISABLE_NOTIFICATIONS` 固定 `false`——实验版原本在代码层丢弃全部消息通知（即弹窗里"不能重新开启通知"的含义）。
 - `version.app=1839`（versionCode 1839000 > 手机已装的 1838000），应用内检查更新即可直接升级覆盖。
+
+### 21. 无图模式 + 折叠面板（Ant Design Collapse 风格，1840）
+- 用户要求参照 [antdv Collapse 组件](https://antdv.com/components/collapse-cn)重新实现无图模式与折叠提示，基于 1839（=1834 基线 + 去弹窗）重新开发，1835–1838 的旧实现仍留在 `backup/1835-1838`。
+- **消息级折叠面板**（`TGMessage` 基类新增共享框架）：
+  - 面板头 46dp：圆角(8dp)浅色底（随主题 textColor 6% 透明度，按压 10%）、左侧标题、右侧 chevron（收起朝下/展开朝上）、展开态下方 0.5dp 分隔线；
+  - 触摸统一在 `TGMessage.onTouchEvent` 最前面拦截（`handleCollapsePanelTouch`），面板区域按压高亮、抬起切换；子类只需实现 5 个钩子：`useCollapsePanel / isPanelCollapsed / getPanelTitle / toggleCollapsePanel / getCollapsePanelTouchRect`，外加 `getCollapsePanelOffsetY()`（展开态内容下移量）。
+- **无图模式**（`ContentFilter.isNoImagesEnabled`，Key `settings_content_filter_no_images`，默认关，`bumpVersion()` 触发列表/消息重建）：
+  - 生效条件：开关开 ＋ `TGMessage.isChannel()` ＋ mosaic 里有 photo/video（`MosaicWrapper` 新增 `getItemCount()/getItem()`）；
+  - 收起态：整个媒体区就是一个面板头，标题"共 N 张图片、M 个视频，点击展开"；面板宽 = min(mosaic宽, max(摘要文字宽+边距+箭头, 160dp))，不再铺满全屏；
+  - 展开态：面板头（标题不变、箭头朝上）+ 下方完整 mosaic（`drawContent` 把 mosaic 画在 `startY + 面板高 + 8dp`），caption、倒计时、触摸命中区同步下移（`getCollapsePanelOffsetY`）；
+  - 点击面板头收起/展开**双向切换**；展开状态存静态 `noImagesExpandedKeys`（`chatId:msgId`），滑动/新消息导致消息重建后不丢；相册增删时摘要缓存 `collapsedMediaSummary` 失效重算。
+- **折叠提示双向化**（`TGMessageText`）：`ContentFilter.shouldCollapse` 命中的文本消息改为面板渲染——
+  - 收起态：气泡内只有一个面板头（标题沿用"内容已被过滤，点击查看"）；
+  - 展开态：面板头 + 分隔线 + 下方原文（文本下移 `面板高+8dp`），点面板头重新折叠（旧版展开后无法收回）；
+  - 带 linkPreview 的消息回落旧行为（占位文本 + 单向展开），避免布局复杂化。
+- **设置页手风琴重构**（`SettingsContentFilterController` 重写）：三个模块（无图模式 / 屏蔽广告 / 内容过滤）按 Accordion 风格排列，**同一时间只展开一个**（点开的模块关闭上一个，再点收起自己，`expandedModule` 状态机）；模块头是标题 + chevron 的行；模块内"已屏蔽的链接""过滤规则"默认只显示前 3 条，超出显示"展开全部（共 N 条）/收起"行；所有展开/收起走 `rebuildPreservingScroll()`（anchor 位置 + top 偏移恢复 + layout pass 后二次校准），不跳顶、不刷新页面。
+- **即时生效**：开关都写 `ContentFilter` 并 `bumpVersion()`；`MessagesController` / `ChatsController` 已有的 version 比对（onActivityResume / onFocusStateChanged）会让聊天窗口与列表在返回时立即重建，无需重启。
+- `version.app=1840`（versionCode 1840000）。
 
 
 ---

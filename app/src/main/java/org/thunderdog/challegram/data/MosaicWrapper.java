@@ -137,6 +137,17 @@ public class MosaicWrapper implements FactorAnimator.Target, ComplexReceiver.Key
     return items.get(0);
   }
 
+  /** Number of media items in this mosaic, for summary panels. */
+  public int getItemCount () {
+    return items.size();
+  }
+
+  /** Item at the given index, or null. */
+  @Nullable
+  public MediaWrapper getItem (int index) {
+    return index >= 0 && index < items.size() ? items.get(index) : null;
+  }
+
   public boolean isSingular () {
     return items.size() == 1;
   }

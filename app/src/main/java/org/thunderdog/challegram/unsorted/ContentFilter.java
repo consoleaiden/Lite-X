@@ -463,6 +463,25 @@ public class ContentFilter {
     return isEnabled() && getMode() == MODE_COLLAPSE && matches(text);
   }
 
+  // == No images mode ==
+
+  private static final String KEY_NO_IMAGES = "settings_content_filter_no_images";
+
+  private static Boolean noImagesEnabled;
+
+  /** True when channel photos/videos start collapsed behind a summary panel. Off by default. */
+  public static boolean isNoImagesEnabled () {
+    if (noImagesEnabled == null)
+      noImagesEnabled = Settings.instance().getBoolean(KEY_NO_IMAGES, false);
+    return noImagesEnabled;
+  }
+
+  public static void setNoImagesEnabled (boolean value) {
+    noImagesEnabled = value;
+    Settings.instance().putBoolean(KEY_NO_IMAGES, value);
+    bumpVersion();
+  }
+
   // == Rules ==
 
   public static class Rule {

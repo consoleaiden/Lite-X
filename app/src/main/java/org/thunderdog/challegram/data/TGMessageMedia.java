@@ -17,6 +17,7 @@ package org.thunderdog.challegram.data;
 import android.graphics.Canvas;
 import android.graphics.RectF;
 import android.os.SystemClock;
+import android.text.TextPaint;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewParent;
@@ -50,6 +51,7 @@ import org.thunderdog.challegram.util.text.TextWrapper;
 import java.util.ArrayList;
 
 import me.vkryl.android.animator.FactorAnimator;
+import me.vkryl.core.ColorUtils;
 import me.vkryl.core.MathUtils;
 import me.vkryl.core.lambda.CancellableRunnable;
 import tgx.td.Td;
@@ -552,11 +554,13 @@ public class TGMessageMedia extends TGMessage {
   protected void onMessageCombinedWithOtherMessage (TdApi.Message otherMessage, boolean atBottom, boolean local) {
     checkCommonCaption();
     checkHasEditedMedia();
+    collapsedMediaSummary = null;
     mosaicWrapper.addItem(createMediaWrapper(otherMessage), atBottom);
   }
 
   @Override
   protected void onMessageCombinationRemoved (TdApi.Message message, int index) {
+    collapsedMediaSummary = null;
     boolean useFullWidth = useFullWidth();
     switch (mosaicWrapper.removeItem(message.id, index)) {
       case MosaicWrapper.MOSAIC_CHANGED: {
@@ -605,6 +609,65 @@ public class TGMessageMedia extends TGMessage {
 
   @Override
   protected void drawContent (MessageView view, Canvas c, int startX, int startY, int maxWidth, ComplexReceiver complexReceiver) {
+    if (useCollapsePanel()) {
+      // "Ant Design" Collapse panel: header row on top, media below when expanded
+      final int offsetY = getCollapsePanelOffsetY();
+      drawCollapsePanelHeader(c, startX, startY, getContentWidth(), !isPanelCollapsed());
+      final boolean clipped = useBubbles() && !useForward();
+      final int saveCount = clipped ? ViewSupport.clipPath(c, getBubbleClipPath()) : Integer.MIN_VALUE;
+      mosaicWrapper.draw(view, c, startX, startY + offsetY, complexReceiver, useFullWidth());
+      if (clipped) {
+        ViewSupport.restoreClipPath(c, saveCount);
+      }
+
+      if (timerText != null) {
+        MediaWrapper mediaWrapper = mosaicWrapper.getSingularItem();
+        int pTimerLeft, pTimerRight;
+
+        int offset = Screen.dp(4f);
+        if (true || isOutgoing() || useBubbles()) {
+          pTimerLeft = mediaWrapper.getCellLeft() + offset;
+          if (useBubbles()) {
+            pTimerLeft += offset + Screen.dp(2f);
+          } else {
+            pTimerLeft += Screen.dp(4f);
+          }
+          pTimerRight = pTimerLeft + timerWidth + offset;
+        } else {
+          pTimerRight = mediaWrapper.getCellRight() - offset;
+          if (useBubbles()) {
+            pTimerRight -= offset + Screen.dp(2f);
+          }
+          pTimerLeft = pTimerRight - timerWidth - Screen.dp(4f);
+        }
+        int pTimerTop = startY + offsetY + mediaWrapper.getCellHeight() - Screen.dp(4f) - Screen.dp(20f) - Screen.dp(4f);
+        if (useBubbles()) {
+          pTimerTop -= offset;
+        }
+
+        RectF rectF = Paints.getRectF();
+        rectF.set(pTimerLeft - Screen.dp(4f), pTimerTop + Screen.dp(4f), pTimerRight, pTimerTop + Screen.dp(4f) + Screen.dp(20f));
+
+        c.drawRoundRect(rectF, Screen.dp(4f), Screen.dp(4f), Paints.fillingPaint(0x4c000000));
+        c.drawText(timerText, pTimerLeft, pTimerTop + Screen.dp(18f), Paints.colorPaint(mHotPaint(), 0xffffffff));
+
+        if (isHotTimerStarted() && !isOutgoing()) {
+          int centerX = mediaWrapper.getCenterX();
+          int centerY = mediaWrapper.getCenterY();
+          int radius = Screen.dp(10f);
+
+          rectF.set(centerX - radius, centerY - radius, centerX + radius, centerY + radius);
+          c.drawArc(rectF, -90f, -360f * getHotExpiresFactor(), true, Paints.fillingPaint(0xffffffff));
+        }
+      }
+
+      if (wrapper != null) {
+        float alpha = getTranslationLoadingAlphaValue();
+        wrapper.draw(c, getTextX(view, wrapper, false), getTextX(view, wrapper, true), Config.MOVE_BUBBLE_TIME_RTL_TO_LEFT ? 0 : getBubbleTimePartWidth(), startY + getMediaHeight() + Screen.dp(TEXT_MARGIN), null, alpha, view.getTextMediaReceiver());
+      }
+      return;
+    }
+
     final boolean clipped = useBubbles() && !useForward();
     final int saveCount = clipped ? ViewSupport.clipPath(c, getBubbleClipPath()) : Integer.MIN_VALUE;
     mosaicWrapper.draw(view, c, startX, startY, complexReceiver, useFullWidth());
@@ -668,7 +731,7 @@ public class TGMessageMedia extends TGMessage {
       if (useFullWidth())
         return view.getMeasuredWidth() - getRealContentX();
       int startX = getContentX();
-      return Math.max(startX + mosaicWrapper.getWidth(), startX + wrapper.getWidth());
+      return Math.max(startX + getMediaWidth(), startX + wrapper.getWidth());
     } else {
       return useBubbles() ? (useForward() ? getContentX() : getContentX() + xBubblePadding) : getRealContentX();
     }
@@ -701,7 +764,7 @@ public class TGMessageMedia extends TGMessage {
     }
 
     int cellLeft = getContentX();
-    int cellTop = getContentY();
+    int cellTop = getContentY() + getCollapsePanelOffsetY();
     int cellRight = cellLeft + mediaWrapper.getCellWidth();
     int cellBottom = cellTop + mediaWrapper.getCellHeight();
 
@@ -824,7 +887,7 @@ public class TGMessageMedia extends TGMessage {
 
   @Override
   protected int getContentWidth () {
-    int mosaicWidth = mosaicWrapper != null ? mosaicWrapper.getWidth() : 0;
+    int mosaicWidth = getMediaWidth();
     return wrapper == null ?
       mosaicWidth :
       Math.max(mosaicWidth, wrapper.getWidth());
@@ -832,10 +895,135 @@ public class TGMessageMedia extends TGMessage {
 
   @Override
   protected int getContentHeight () {
-    int mosaicHeight = mosaicWrapper != null ? mosaicWrapper.getHeight() : 0;
+    int mosaicHeight = getMediaHeight();
     return wrapper == null ?
       mosaicHeight :
       mosaicHeight + wrapper.getHeight() + Screen.dp(TEXT_MARGIN) + (useBubbles() && !useForward() ? Screen.dp(TEXT_MARGIN) - getBubbleContentPadding() : 0);
+  }
+
+  // == No images mode (collapse panel) ==
+
+  private String collapsedMediaSummary;
+
+  @Override
+  protected boolean hasCollapsibleMediaContent () {
+    if (mosaicWrapper == null) {
+      return false;
+    }
+    int count = mosaicWrapper.getItemCount();
+    for (int i = 0; i < count; i++) {
+      MediaWrapper item = mosaicWrapper.getItem(i);
+      if (item != null && (item.isPhoto() || item.isVideo())) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  @Override
+  protected boolean useCollapsePanel () {
+    return isNoImagesModeApplicable();
+  }
+
+  @Override
+  protected boolean isPanelCollapsed () {
+    return isNoImagesCollapsed();
+  }
+
+  @Nullable
+  @Override
+  protected String getPanelTitle () {
+    return getCollapsedMediaSummary();
+  }
+
+  @Override
+  protected boolean toggleCollapsePanel () {
+    if (isNoImagesCollapsed()) {
+      return expandNoImages();
+    } else if (isNoImagesExpanded()) {
+      return collapseNoImages();
+    }
+    return false;
+  }
+
+  @Override
+  protected boolean getCollapsePanelTouchRect (@NonNull RectF out) {
+    if (!useCollapsePanel()) {
+      return false;
+    }
+    int left = getContentX();
+    int top = getContentY();
+    out.set(left, top, left + getContentWidth(), top + collapsePanelHeight());
+    return true;
+  }
+
+  @Override
+  protected int getCollapsePanelOffsetY () {
+    return isNoImagesExpanded() ? collapsePanelHeight() + collapsePanelGap() : 0;
+  }
+
+  /** Width of the media block: the real mosaic width, or the panel width when collapsed. */
+  private int getMediaWidth () {
+    if (isNoImagesCollapsed()) {
+      return getPanelMediaWidth();
+    }
+    return mosaicWrapper != null ? mosaicWrapper.getWidth() : 0;
+  }
+
+  /**
+   * Panel width while collapsed: fits the summary text and the chevron, but
+   * never wider than the real mosaic (a panel narrower than its container
+   * would break the bubble layout).
+   */
+  private int getPanelMediaWidth () {
+    int mosaicWidth = mosaicWrapper != null ? mosaicWrapper.getWidth() : 0;
+    TextPaint paint = Paints.getTextPaint15(getTextColorSet().defaultTextColor());
+    int textWidth = (int) Math.ceil(U.measureText(getCollapsedMediaSummary(), paint));
+    int reserved = drawBubbleTimeOverContent() ? Screen.dp(56f) : 0;
+    int desired = textWidth + Screen.dp(16f) * 2 + Screen.dp(24f) + reserved;
+    int panelWidth = Math.max(desired, Screen.dp(160f));
+    return mosaicWidth > 0 ? Math.min(mosaicWidth, panelWidth) : panelWidth;
+  }
+
+  /** Height of the media block: panel only when collapsed, header + mosaic when expanded. */
+  private int getMediaHeight () {
+    if (isNoImagesCollapsed()) {
+      return collapsePanelHeight();
+    }
+    if (isNoImagesExpanded()) {
+      return collapsePanelHeight() + collapsePanelGap() + (mosaicWrapper != null ? mosaicWrapper.getHeight() : 0);
+    }
+    return mosaicWrapper != null ? mosaicWrapper.getHeight() : 0;
+  }
+
+  private String getCollapsedMediaSummary () {
+    if (collapsedMediaSummary == null) {
+      int photos = 0, videos = 0;
+      int count = mosaicWrapper != null ? mosaicWrapper.getItemCount() : 0;
+      for (int i = 0; i < count; i++) {
+        MediaWrapper item = mosaicWrapper.getItem(i);
+        if (item == null) {
+          continue;
+        }
+        if (item.isPhoto()) {
+          photos++;
+        } else if (item.isVideo()) {
+          videos++;
+        }
+      }
+      StringBuilder parts = new StringBuilder();
+      if (photos > 0) {
+        parts.append(Lang.getString(R.string.NoImagesPhotoCount, photos));
+      }
+      if (videos > 0) {
+        if (parts.length() > 0) {
+          parts.append("、");
+        }
+        parts.append(Lang.getString(R.string.NoImagesVideoCount, videos));
+      }
+      collapsedMediaSummary = parts.length() > 0 ? Lang.getString(R.string.NoImagesCollapsedSummary, parts.toString()) : Lang.getString(R.string.NoImagesCollapsedGeneric);
+    }
+    return collapsedMediaSummary;
   }
 
   // Touch
@@ -847,9 +1035,9 @@ public class TGMessageMedia extends TGMessage {
     }
 
     int cellLeft = getContentX();
-    int cellTop = getContentY();
-    int cellRight = cellLeft + mosaicWrapper.getWidth();
-    int cellBottom = cellTop + mosaicWrapper.getHeight();
+    int cellTop = getContentY() + getCollapsePanelOffsetY();
+    int cellRight = cellLeft + getMediaWidth();
+    int cellBottom = cellTop + getMediaHeight() - getCollapsePanelOffsetY();
 
     if (wrapper != null && wrapper.onTouchEvent(view, e)) {
       return true;
@@ -906,9 +1094,9 @@ public class TGMessageMedia extends TGMessage {
       return false;
     }
     int cellLeft = getContentX();
-    int cellTop = getContentY();
-    int cellRight = cellLeft + mosaicWrapper.getWidth();
-    int cellBottom = cellTop + mosaicWrapper.getHeight();
+    int cellTop = getContentY() + getCollapsePanelOffsetY();
+    int cellRight = cellLeft + getMediaWidth();
+    int cellBottom = cellTop + getMediaHeight() - getCollapsePanelOffsetY();
 
     return !(isHot() && !isViewOnce()) || x < cellLeft || x > cellRight || y < cellTop || y > cellBottom;
   }

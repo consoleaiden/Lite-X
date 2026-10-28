@@ -1453,6 +1453,12 @@
   <item type="id" name="btn_contentFilterEditRule" />
   <item type="id" name="btn_contentFilterBlockAds" />
   <item type="id" name="btn_contentFilterRemoveAdUrl" />
+  <item type="id" name="btn_contentFilterNoImages" />
+  <item type="id" name="btn_cfModuleNoImages" />
+  <item type="id" name="btn_cfModuleAds" />
+  <item type="id" name="btn_cfModuleFilter" />
+  <item type="id" name="btn_contentFilterToggleAdUrls" />
+  <item type="id" name="btn_contentFilterToggleRules" />
   <item type="id" name="btn_blockAd" />
   <item type="id" name="btn_proxyTest" />
 

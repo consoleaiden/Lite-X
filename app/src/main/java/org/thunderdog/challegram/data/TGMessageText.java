@@ -15,6 +15,7 @@
 package org.thunderdog.challegram.data;
 
 import android.graphics.Canvas;
+import android.graphics.RectF;
 import android.net.Uri;
 import android.view.MotionEvent;
 import android.view.View;
@@ -160,6 +161,51 @@ public class TGMessageText extends TGMessage {
       return false;
     if (text != null)
       setText(text, true, true, false);
+    return true;
+  }
+
+  // == Collapse panel ("Ant Design" Collapse style) ==
+
+  @Override
+  protected boolean useCollapsePanel () {
+    // Panel replaces the plain placeholder only for simple text messages;
+    // messages with a link preview keep the legacy one-way behavior.
+    return isContentFiltered() && linkPreview == null;
+  }
+
+  @Override
+  protected boolean isPanelCollapsed () {
+    return !isContentFilterExpanded();
+  }
+
+  @Nullable
+  @Override
+  protected String getPanelTitle () {
+    return Lang.getString(R.string.ContentFilteredCollapsed);
+  }
+
+  @Override
+  protected boolean toggleCollapsePanel () {
+    if (!isContentFilterExpanded()) {
+      return expandContentFilter();
+    }
+    if (collapseContentFilter()) {
+      if (text != null) {
+        setText(text, true, true, false);
+      }
+      return true;
+    }
+    return false;
+  }
+
+  @Override
+  protected boolean getCollapsePanelTouchRect (@NonNull RectF out) {
+    if (!useCollapsePanel()) {
+      return false;
+    }
+    int left = getContentX();
+    int top = getContentY() + getTextTopOffset();
+    out.set(left, top, left + getContentWidth(), top + collapsePanelHeight());
     return true;
   }
 
@@ -551,7 +597,16 @@ public class TGMessageText extends TGMessage {
     float linkPreviewAboveText = this.linkPreviewAboveText.getFloatValue();
     ComplexReceiver textMediaReceiver = view.getTextMediaReceiver();
     int linkPreviewY = getWebY();
-    final int topTextY = startY + getTextTopOffset();
+    // Collapse panel: header row above the text ("Ant Design" Collapse style)
+    final boolean panelMode = useCollapsePanel();
+    if (panelMode) {
+      drawCollapsePanelHeader(c, getContentX(), startY + getTextTopOffset(), getContentWidth(), !isPanelCollapsed());
+      if (isPanelCollapsed()) {
+        // The header is the whole content while collapsed
+        return;
+      }
+    }
+    final int topTextY = startY + getTextTopOffset() + (panelMode ? collapsePanelHeight() + collapsePanelGap() : 0);
     final int bottomTextY = linkPreview == null ? topTextY : linkPreviewY + linkPreview.getHeight() + Screen.dp(6f) + Screen.dp(2f);
     for (ListAnimator.Entry<TextWrapper> entry : visibleText) {
       final int startXRtl = getStartXRtl(entry.item, startX, maxWidth);
@@ -595,7 +650,15 @@ public class TGMessageText extends TGMessage {
 
   @Override
   protected int getContentHeight () {
-    int height = Math.round(visibleText.getMetadata().getTotalHeight() + getTextTopOffset() * visibleText.getMetadata().getTotalVisibility());
+    int height;
+    if (useCollapsePanel()) {
+      if (isPanelCollapsed()) {
+        return collapsePanelHeight();
+      }
+      height = collapsePanelHeight() + collapsePanelGap() + Math.round(visibleText.getMetadata().getTotalHeight() + getTextTopOffset() * visibleText.getMetadata().getTotalVisibility());
+    } else {
+      height = Math.round(visibleText.getMetadata().getTotalHeight() + getTextTopOffset() * visibleText.getMetadata().getTotalVisibility());
+    }
     if (linkPreview != null) {
       if (height > 0)
         height += Screen.dp(6f);

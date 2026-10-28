@@ -20,7 +20,20 @@
   <string name="ContentFilterModeHide">完全过滤</string>
   <string name="ContentFilterModeHideInfo">命中的消息直接不显示。</string>
   <string name="ContentFilterModeCollapse">折叠提示</string>
-  <string name="ContentFilterModeCollapseInfo">命中的消息折叠成一行提示，点击该消息可展开查看原文。</string>
+  <string name="ContentFilterModeCollapseInfo">命中的消息折叠成一行提示，点击面板可展开查看原文，再次点击面板头可重新折叠。</string>
+
+  <!-- No images mode (custom feature) -->
+  <string name="NoImagesSection">无图模式</string>
+  <string name="NoImagesEnabled">启用无图模式</string>
+  <string name="NoImagesEnabledInfo">开启后，频道消息中的图片和视频默认折叠成数量摘要面板，点击面板展开查看原图，再次点击面板头可重新折叠。仅对频道消息生效。</string>
+  <string name="NoImagesPhotoCount">%1$d 张图片</string>
+  <string name="NoImagesVideoCount">%1$d 个视频</string>
+  <string name="NoImagesCollapsedSummary">共 %1$s，点击展开</string>
+  <string name="NoImagesCollapsedGeneric">图片/视频已折叠，点击展开</string>
+
+  <!-- Collapsible lists (custom feature) -->
+  <string name="FilterListShowMore">展开全部（共 %1$d 条）</string>
+  <string name="FilterListShowLess">收起</string>
   <string name="ContentFilterRules">过滤规则</string>
   <string name="ContentFilterNoRules">还没有添加任何规则。</string>
   <string name="ContentFilterAddRule">添加规则</string>

@@ -362,6 +362,10 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
     this.currentViews = new MultipleViewProvider();
     this.currentViews.setContentProvider(this);
     this.msg = msg;
+    // Restore a previously user-expanded "no images" panel (survives message rebuilds)
+    if (noImagesExpandedKeys.contains(noImagesKey(msg.chatId, msg.id))) {
+      this.noImagesExpanded = true;
+    }
     this.sponsoredMessage = sponsoredMessage;
     this.flags |= BitwiseUtils.optional(FLAG_BELOW_ALL_MESSAGES, isBelowAllMessages);
     this.messageReactions = new TGReactions(this, tdlib, msg.interactionInfo != null ? msg.interactionInfo.reactions : null, new TGReactions.MessageReactionsDelegate() {
@@ -2999,6 +3003,10 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
   private float mInitialTouchY;
 
   public boolean onTouchEvent (MessageView view, MotionEvent e) {
+    // Collapse panel (no-images / content-filter) has priority over everything else
+    if (handleCollapsePanelTouch(view, e)) {
+      return true;
+    }
     /*if ((flags & FLAG_HEADER_ENABLED) == 0 && (msg.forwardInfo == null || forwardInfo == null) && replyData == null && (inlineKeyboard == null || inlineKeyboard.isEmpty())) {
       return false;
     }*/
@@ -4377,6 +4385,216 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
     }
     // TODO
     return /* isEventLog() */ false;
+  }
+
+  /** Collapses an expanded content-filter panel back into its summary row. */
+  public boolean collapseContentFilter () {
+    if (isContentFiltered() && contentFilterExpanded) {
+      contentFilterExpanded = false;
+      return true;
+    }
+    return false;
+  }
+
+  // == Collapse panel ("Ant Design" Collapse style) ==
+
+  /**
+   * Messages whose photo/video block can be hidden behind a summary panel by
+   * the "no images" mode. Overridden by message types that display media.
+   */
+  protected boolean hasCollapsibleMediaContent () {
+    return false;
+  }
+
+  /**
+   * Media blocks the user explicitly expanded, keyed by "chatId:msgId".
+   * Kept in a static set so the state survives TGMessage rebuilds (new
+   * instances are created whenever the message list is reloaded).
+   */
+  private static final Set<String> noImagesExpandedKeys = new HashSet<>();
+
+  private static String noImagesKey (long chatId, long messageId) {
+    return chatId + ":" + messageId;
+  }
+
+  private boolean noImagesExpanded;
+
+  /** Whether the "no images" mode applies to this particular message. */
+  public final boolean isNoImagesModeApplicable () {
+    return ContentFilter.isNoImagesEnabled() && isChannel() && hasCollapsibleMediaContent();
+  }
+
+  /** Whether the photo/video block is currently collapsed into a summary panel. */
+  public final boolean isNoImagesCollapsed () {
+    return isNoImagesModeApplicable() && !noImagesExpanded;
+  }
+
+  /** Whether the photo/video block was explicitly expanded by the user. */
+  public final boolean isNoImagesExpanded () {
+    return isNoImagesModeApplicable() && noImagesExpanded;
+  }
+
+  public boolean expandNoImages () {
+    if (isNoImagesCollapsed()) {
+      noImagesExpanded = true;
+      noImagesExpandedKeys.add(noImagesKey(getChatId(), getId()));
+      return true;
+    }
+    return false;
+  }
+
+  public boolean collapseNoImages () {
+    if (isNoImagesExpanded()) {
+      noImagesExpanded = false;
+      noImagesExpandedKeys.remove(noImagesKey(getChatId(), getId()));
+      return true;
+    }
+    return false;
+  }
+
+  // == Panel metrics, touch & painting (shared by "no images" and content-filter panels) ==
+
+  /** Height of the panel header row, in dp. */
+  private static final float COLLAPSE_PANEL_HEIGHT = 46f;
+  /** Vertical gap between the panel header and the expanded content, in dp. */
+  private static final float COLLAPSE_PANEL_GAP = 8f;
+
+  protected static int collapsePanelHeight () {
+    return Screen.dp(COLLAPSE_PANEL_HEIGHT);
+  }
+
+  protected static int collapsePanelGap () {
+    return Screen.dp(COLLAPSE_PANEL_GAP);
+  }
+
+  /**
+   * Whether this message renders inside a collapsible panel: either the
+   * "no images" mode (photos/videos behind a summary header) or a text
+   * message collapsed by the content filter. Overridden by subclasses.
+   */
+  protected boolean useCollapsePanel () {
+    return false;
+  }
+
+  /** Whether the panel content is currently collapsed (header only). */
+  protected boolean isPanelCollapsed () {
+    return true;
+  }
+
+  /** Title displayed in the panel header row. */
+  @Nullable
+  protected String getPanelTitle () {
+    return null;
+  }
+
+  /** Performs the expand/collapse state change; returns true when changed. */
+  protected boolean toggleCollapsePanel () {
+    return false;
+  }
+
+  /** Touch region of the panel header in message coordinates, or false. */
+  protected boolean getCollapsePanelTouchRect (@NonNull RectF out) {
+    return false;
+  }
+
+  /**
+   * Extra vertical offset applied to the message content while the panel
+   * header is displayed above expanded content (zero when collapsed, because
+   * the header then is the whole content).
+   */
+  protected int getCollapsePanelOffsetY () {
+    return 0;
+  }
+
+  private boolean panelPressed;
+
+  /**
+   * Draws the panel header the "Ant Design" Collapse way: rounded rect with a
+   * subtle fill, the title on the left and a chevron on the right (pointing
+   * down while collapsed, up while expanded), plus a divider line under the
+   * header when the content is expanded below it.
+   */
+  protected void drawCollapsePanelHeader (Canvas c, int startX, int startY, int width, boolean expanded) {
+    final String title = getPanelTitle();
+    if (title == null || width <= 0) {
+      return;
+    }
+    final int textColor = getTextColorSet().defaultTextColor();
+    final int height = collapsePanelHeight();
+    final int radius = Screen.dp(8f);
+    RectF rect = Paints.getRectF();
+    rect.set(startX, startY, startX + width, startY + height);
+    c.drawRoundRect(rect, radius, radius, Paints.fillingPaint(ColorUtils.alphaColor(panelPressed ? 0.10f : 0.05f, textColor)));
+
+    // Title, left-aligned with a 16dp inset
+    TextPaint paint = Paints.getTextPaint15(textColor);
+    float textX = startX + Screen.dp(16f);
+    float textY = startY + height / 2f - (paint.ascent() + paint.descent()) / 2f;
+    c.drawText(title, textX, textY, paint);
+
+    // Chevron on the right, 16dp from the edge
+    final int chevronSize = Screen.dp(9f);
+    final int chevronHalf = chevronSize / 2;
+    final float chevronCx = startX + width - Screen.dp(16f) - chevronHalf;
+    final float chevronCy = startY + height / 2f;
+    final float chevronDepth = Screen.dp(2.5f);
+    Path path = Paints.getPath();
+    path.reset();
+    if (expanded) {
+      // pointing up
+      path.moveTo(chevronCx - chevronHalf, chevronCy + chevronDepth * .6f);
+      path.lineTo(chevronCx, chevronCy - chevronDepth);
+      path.lineTo(chevronCx + chevronHalf, chevronCy + chevronDepth * .6f);
+    } else {
+      // pointing down
+      path.moveTo(chevronCx - chevronHalf, chevronCy - chevronDepth * .6f);
+      path.lineTo(chevronCx, chevronCy + chevronDepth);
+      path.lineTo(chevronCx + chevronHalf, chevronCy - chevronDepth * .6f);
+    }
+    c.drawPath(path, Paints.getProgressPaint(textColor, Screen.dp(1.8f)));
+
+    if (expanded) {
+      // Divider between the header and the expanded content
+      rect.set(startX, startY + height, startX + width, startY + height + Math.max(1, Screen.dp(0.5f)));
+      c.drawRect(rect, Paints.fillingPaint(ColorUtils.alphaColor(0.12f, textColor)));
+    }
+  }
+
+  /** Intercepts taps on the panel header (or the whole collapsed panel). */
+  private boolean handleCollapsePanelTouch (MessageView view, MotionEvent e) {
+    if (!useCollapsePanel()) {
+      return false;
+    }
+    RectF rect = Paints.getRectF();
+    if (!getCollapsePanelTouchRect(rect)) {
+      panelPressed = false;
+      return false;
+    }
+    final boolean inside = rect.contains(e.getX(), e.getY());
+    switch (e.getAction()) {
+      case MotionEvent.ACTION_DOWN:
+        panelPressed = inside;
+        return inside;
+      case MotionEvent.ACTION_MOVE:
+        return panelPressed && inside;
+      case MotionEvent.ACTION_CANCEL:
+        panelPressed = false;
+        return false;
+      case MotionEvent.ACTION_UP: {
+        if (panelPressed && inside) {
+          panelPressed = false;
+          if (toggleCollapsePanel()) {
+            rebuildLayout();
+            invalidate();
+          }
+          return true;
+        }
+        panelPressed = false;
+        return false;
+      }
+      default:
+        return panelPressed;
+    }
   }
 
   public int getWidth () {
