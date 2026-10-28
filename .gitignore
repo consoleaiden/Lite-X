@@ -24,3 +24,4 @@ libc++_shared.so
 /cloudflare/dist
 /cloudflare/.wrangler
 /cloudflare/.dev.vars
+_tools/

@@ -15,7 +15,7 @@
 | 项 | 值 |
 | --- | --- |
 | 应用名 | **Lite X**（仓库 Variables `APP_NAME`） |
-| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1829` → **1829000** |
+| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1839` → **1839000** |
 | flavor / ABI | `marshmallow`（minSdk 23）+ `arm64-v8a` / `armeabi-v7a` |
 | 构建方式 | GitHub Actions `.github/workflows/build-apk.yml`（`workflow_dispatch`），约 22 分钟 |
 | 应用内更新 | 读本仓库 `/releases/latest` |
@@ -204,6 +204,13 @@
   5. **删除 `:baseline-profile` 模块**：改为 generated profiles 直接放 `src/{latest,qrs,tens}Release/generated/baselineProfiles/`，且**仅当 `-PgenerateBaselineProfile=true` 时才消费**（`gradleFlag` 默认 false）——正常 CI 构建（含 marshmallow）完全不引用，无缺文件风险。
   6. `CMakeLists.txt` 移除 flavor 白名单 → 已知坑 #1 的「configureCMake 1 小时后失败」风险随之消失，CI 里的 whitelist 校验步骤一并删除。
 - 本地定制保留核查：README（全部章节）、`version.properties`（1834）、`U.java`、`Settings.java`、`build.gradle.kts`（`ciBuildNumber`）、`.github/workflows/build-apk.yml`（触发条件 / 发布 tag / CI_BUILD_NUMBER）——逐处确认。
+
+### 20. 回退到 1834 基线 + 去掉实验弹窗（1839）
+- 用户反馈 1835–1838 的几轮优化效果不理想，**整体回退**到 `eab8d18`（1834，testOnly 修复版）。被回退的功能（敏感词屏蔽、无图模式、双向折叠、设置页折叠列表、去弹窗、体验优化）全部保存在 `backup/1835-1838` 分支，需要时 cherry-pick 找回。
+- 在 1834 基线上只保留两项定点修改：
+  1. `MainActivity.showExperimentalAlert()` 方法体清空——CI 生成的 `local.properties` 里 `app.id=org.example.tgx` 被构建脚本判为"示例/实验版"（`BuildConfig.EXPERIMENTAL=true`），导致每次启动弹「警告：实验性构建」；本 fork 有意使用该包名，弹窗不适用。
+  2. `Config.FORCE_DISABLE_NOTIFICATIONS` 固定 `false`——实验版原本在代码层丢弃全部消息通知（即弹窗里"不能重新开启通知"的含义）。
+- `version.app=1839`（versionCode 1839000 > 手机已装的 1838000），应用内检查更新即可直接升级覆盖。
 
 
 ---

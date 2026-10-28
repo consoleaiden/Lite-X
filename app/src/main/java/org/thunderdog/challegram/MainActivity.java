@@ -542,20 +542,9 @@ public class MainActivity extends BaseActivity implements GlobalAccountListener,
   }
 
   private void showExperimentalAlert () {
-    if (BuildConfig.EXPERIMENTAL && !BuildConfig.DEBUG) {
-      ViewController<?> c = navigation.getCurrentStackItem();
-      if (c != null) {
-        c.openAlert(R.string.ExperimentalBuildTitle,
-          Strings.buildMarkdown(c, Lang.getStringSecure(R.string.ExperimentalBuildInfo), (view, span, clickedText) -> {
-            TD.handleLegacyClick(c, clickedText, span);
-            return true;
-          }),
-          Lang.getOK(),
-          (dialog, which) -> dialog.dismiss(),
-          ViewController.ALERT_HAS_LINKS | ViewController.ALERT_NO_CANCEL | ViewController.ALERT_NO_CANCELABLE
-        );
-      }
-    }
+    // No-op: this fork is intentionally distributed under the org.example.tgx
+    // package, which the build scripts treat as "experimental". The startup
+    // warning is unwanted here (Lite-X custom build).
   }
 
   public final ViewController<?> generateUnauthorizedController (Tdlib tdlib) {
