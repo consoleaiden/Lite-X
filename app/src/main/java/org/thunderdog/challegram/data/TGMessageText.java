@@ -17,6 +17,7 @@ package org.thunderdog.challegram.data;
 import android.graphics.Canvas;
 import android.graphics.RectF;
 import android.net.Uri;
+import android.text.TextPaint;
 import android.view.MotionEvent;
 import android.view.View;
 
@@ -28,6 +29,7 @@ import org.thunderdog.challegram.component.chat.MessageView;
 import org.thunderdog.challegram.component.chat.MessagesManager;
 import org.thunderdog.challegram.config.Config;
 import org.thunderdog.challegram.R;
+import org.thunderdog.challegram.U;
 import org.thunderdog.challegram.core.Lang;
 import org.thunderdog.challegram.loader.ComplexReceiver;
 import org.thunderdog.challegram.loader.DoubleImageReceiver;
@@ -36,6 +38,7 @@ import org.thunderdog.challegram.loader.Receiver;
 import org.thunderdog.challegram.loader.gif.GifReceiver;
 import org.thunderdog.challegram.mediaview.MediaViewThumbLocation;
 import org.thunderdog.challegram.theme.ColorId;
+import org.thunderdog.challegram.tool.Paints;
 import org.thunderdog.challegram.tool.Screen;
 import org.thunderdog.challegram.tool.Strings;
 import org.thunderdog.challegram.tool.Views;
@@ -726,10 +729,28 @@ public class TGMessageText extends TGMessage {
   @Override
   protected int getContentWidth () {
     int textWidth = Math.round(visibleText.getMetadata().getTotalWidth());
+    int width;
     if (linkPreview != null) {
-      return Math.max(textWidth, linkPreview.getWidth());
+      width = Math.max(textWidth, linkPreview.getWidth());
+    } else {
+      width = textWidth;
     }
-    return textWidth;
+    if (useCollapsePanel()) {
+      // Make sure the collapse header fits: title + 16dp insets + chevron
+      width = Math.max(width, getPanelDesiredWidth());
+    }
+    return width;
+  }
+
+  /** Minimal width for the collapse header so the title and chevron never overlap. */
+  private int getPanelDesiredWidth () {
+    String title = getPanelTitle();
+    if (title == null) {
+      return 0;
+    }
+    TextPaint paint = Paints.getTextPaint15(getTextColorSet().defaultTextColor());
+    int textWidth = (int) Math.ceil(U.measureText(title, paint));
+    return textWidth + Screen.dp(16f) * 2 + Screen.dp(24f);
   }
 
   private boolean forceExpand = false;

@@ -227,7 +227,10 @@ public class TGMessageMedia extends TGMessage {
 
   @Override
   protected boolean preferFullWidth () {
-    return UI.isPortrait() && !UI.isTablet() && isChannel() && !isEventLog() && !Td.isAnimation(msg.content) && (!mosaicWrapper.isSingular() || mosaicWrapper.getAspectRatio() >= (mosaicWrapper.getSingularItem().isGif() ? MIN_RATIO_GIF : MIN_RATIO));
+    // Lite-X custom: photo/video messages keep the avatar-aware content width
+    // (avatar + spacing reserved on the left, margin on the right) instead of
+    // spanning the whole screen width.
+    return false;
   }
 
   @Override

@@ -4379,8 +4379,7 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
 
   public boolean onMessageClick (MessageView v, MessagesController c) {
     if (expandContentFilter()) {
-      rebuildLayout();
-      invalidate();
+      rebuildAndUpdateContent();
       return true;
     }
     // TODO
@@ -4584,8 +4583,9 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
         if (panelPressed && inside) {
           panelPressed = false;
           if (toggleCollapsePanel()) {
-            rebuildLayout();
-            invalidate();
+            // Recomputes content + height and notifies the messages list via
+            // manager.onMessageHeightChanged, so surrounding messages re-flow.
+            rebuildAndUpdateContent();
           }
           return true;
         }
