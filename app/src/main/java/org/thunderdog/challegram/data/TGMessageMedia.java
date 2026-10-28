@@ -610,64 +610,24 @@ public class TGMessageMedia extends TGMessage {
   @Override
   protected void drawContent (MessageView view, Canvas c, int startX, int startY, int maxWidth, ComplexReceiver complexReceiver) {
     if (useCollapsePanel()) {
-      // "Ant Design" Collapse panel: header row on top, media below when expanded
-      final int offsetY = getCollapsePanelOffsetY();
-      drawCollapsePanelHeader(c, startX, startY, getContentWidth(), !isPanelCollapsed());
-      final boolean clipped = useBubbles() && !useForward();
-      final int saveCount = clipped ? ViewSupport.clipPath(c, getBubbleClipPath()) : Integer.MIN_VALUE;
-      mosaicWrapper.draw(view, c, startX, startY + offsetY, complexReceiver, useFullWidth());
-      if (clipped) {
-        ViewSupport.restoreClipPath(c, saveCount);
+      // "No images" mode: the summary header replaces the media while collapsed,
+      // and sits above the untouched upstream media layout while expanded.
+      final boolean expanded = isNoImagesExpanded();
+      drawCollapsePanelHeader(c, startX, startY, getContentWidth(), expanded);
+      if (!expanded) {
+        return;
       }
-
-      if (timerText != null) {
-        MediaWrapper mediaWrapper = mosaicWrapper.getSingularItem();
-        int pTimerLeft, pTimerRight;
-
-        int offset = Screen.dp(4f);
-        if (true || isOutgoing() || useBubbles()) {
-          pTimerLeft = mediaWrapper.getCellLeft() + offset;
-          if (useBubbles()) {
-            pTimerLeft += offset + Screen.dp(2f);
-          } else {
-            pTimerLeft += Screen.dp(4f);
-          }
-          pTimerRight = pTimerLeft + timerWidth + offset;
-        } else {
-          pTimerRight = mediaWrapper.getCellRight() - offset;
-          if (useBubbles()) {
-            pTimerRight -= offset + Screen.dp(2f);
-          }
-          pTimerLeft = pTimerRight - timerWidth - Screen.dp(4f);
-        }
-        int pTimerTop = startY + offsetY + mediaWrapper.getCellHeight() - Screen.dp(4f) - Screen.dp(20f) - Screen.dp(4f);
-        if (useBubbles()) {
-          pTimerTop -= offset;
-        }
-
-        RectF rectF = Paints.getRectF();
-        rectF.set(pTimerLeft - Screen.dp(4f), pTimerTop + Screen.dp(4f), pTimerRight, pTimerTop + Screen.dp(4f) + Screen.dp(20f));
-
-        c.drawRoundRect(rectF, Screen.dp(4f), Screen.dp(4f), Paints.fillingPaint(0x4c000000));
-        c.drawText(timerText, pTimerLeft, pTimerTop + Screen.dp(18f), Paints.colorPaint(mHotPaint(), 0xffffffff));
-
-        if (isHotTimerStarted() && !isOutgoing()) {
-          int centerX = mediaWrapper.getCenterX();
-          int centerY = mediaWrapper.getCenterY();
-          int radius = Screen.dp(10f);
-
-          rectF.set(centerX - radius, centerY - radius, centerX + radius, centerY + radius);
-          c.drawArc(rectF, -90f, -360f * getHotExpiresFactor(), true, Paints.fillingPaint(0xffffffff));
-        }
-      }
-
-      if (wrapper != null) {
-        float alpha = getTranslationLoadingAlphaValue();
-        wrapper.draw(c, getTextX(view, wrapper, false), getTextX(view, wrapper, true), Config.MOVE_BUBBLE_TIME_RTL_TO_LEFT ? 0 : getBubbleTimePartWidth(), startY + getMediaHeight() + Screen.dp(TEXT_MARGIN), null, alpha, view.getTextMediaReceiver());
-      }
+      c.save();
+      c.translate(0f, getCollapsePanelOffsetY());
+      drawMediaContent(view, c, startX, startY, maxWidth, complexReceiver);
+      c.restore();
       return;
     }
+    drawMediaContent(view, c, startX, startY, maxWidth, complexReceiver);
+  }
 
+  /** Upstream media drawing logic, unchanged; called with canvas already shifted when a panel is shown above. */
+  private void drawMediaContent (MessageView view, Canvas c, int startX, int startY, int maxWidth, ComplexReceiver complexReceiver) {
     final boolean clipped = useBubbles() && !useForward();
     final int saveCount = clipped ? ViewSupport.clipPath(c, getBubbleClipPath()) : Integer.MIN_VALUE;
     mosaicWrapper.draw(view, c, startX, startY, complexReceiver, useFullWidth());
@@ -731,7 +691,7 @@ public class TGMessageMedia extends TGMessage {
       if (useFullWidth())
         return view.getMeasuredWidth() - getRealContentX();
       int startX = getContentX();
-      return Math.max(startX + getMediaWidth(), startX + wrapper.getWidth());
+      return Math.max(startX + (isNoImagesCollapsed() ? getPanelMediaWidth() : mosaicWrapper.getWidth()), startX + wrapper.getWidth());
     } else {
       return useBubbles() ? (useForward() ? getContentX() : getContentX() + xBubblePadding) : getRealContentX();
     }
@@ -764,7 +724,7 @@ public class TGMessageMedia extends TGMessage {
     }
 
     int cellLeft = getContentX();
-    int cellTop = getContentY() + getCollapsePanelOffsetY();
+    int cellTop = getContentY();
     int cellRight = cellLeft + mediaWrapper.getCellWidth();
     int cellBottom = cellTop + mediaWrapper.getCellHeight();
 
@@ -887,7 +847,15 @@ public class TGMessageMedia extends TGMessage {
 
   @Override
   protected int getContentWidth () {
-    int mosaicWidth = getMediaWidth();
+    if (isNoImagesCollapsed()) {
+      // Collapsed: width of the summary bar (fits text + chevron)
+      return getPanelMediaWidth();
+    }
+    return computeMediaContentWidth();
+  }
+
+  private int computeMediaContentWidth () {
+    int mosaicWidth = mosaicWrapper != null ? mosaicWrapper.getWidth() : 0;
     return wrapper == null ?
       mosaicWidth :
       Math.max(mosaicWidth, wrapper.getWidth());
@@ -895,13 +863,25 @@ public class TGMessageMedia extends TGMessage {
 
   @Override
   protected int getContentHeight () {
-    int mosaicHeight = getMediaHeight();
+    if (isNoImagesCollapsed()) {
+      // Collapsed: only the summary header row
+      return collapsePanelHeight();
+    }
+    int height = computeMediaContentHeight();
+    if (isNoImagesExpanded()) {
+      height += getCollapsePanelOffsetY();
+    }
+    return height;
+  }
+
+  private int computeMediaContentHeight () {
+    int mosaicHeight = mosaicWrapper != null ? mosaicWrapper.getHeight() : 0;
     return wrapper == null ?
       mosaicHeight :
       mosaicHeight + wrapper.getHeight() + Screen.dp(TEXT_MARGIN) + (useBubbles() && !useForward() ? Screen.dp(TEXT_MARGIN) - getBubbleContentPadding() : 0);
   }
 
-  // == No images mode (collapse panel) ==
+  // == No images mode (collapsible summary panel) ==
 
   private String collapsedMediaSummary;
 
@@ -962,18 +942,9 @@ public class TGMessageMedia extends TGMessage {
     return isNoImagesExpanded() ? collapsePanelHeight() + collapsePanelGap() : 0;
   }
 
-  /** Width of the media block: the real mosaic width, or the panel width when collapsed. */
-  private int getMediaWidth () {
-    if (isNoImagesCollapsed()) {
-      return getPanelMediaWidth();
-    }
-    return mosaicWrapper != null ? mosaicWrapper.getWidth() : 0;
-  }
-
   /**
    * Panel width while collapsed: fits the summary text and the chevron, but
-   * never wider than the real mosaic (a panel narrower than its container
-   * would break the bubble layout).
+   * never wider than the real mosaic.
    */
   private int getPanelMediaWidth () {
     int mosaicWidth = mosaicWrapper != null ? mosaicWrapper.getWidth() : 0;
@@ -983,17 +954,6 @@ public class TGMessageMedia extends TGMessage {
     int desired = textWidth + Screen.dp(16f) * 2 + Screen.dp(24f) + reserved;
     int panelWidth = Math.max(desired, Screen.dp(160f));
     return mosaicWidth > 0 ? Math.min(mosaicWidth, panelWidth) : panelWidth;
-  }
-
-  /** Height of the media block: panel only when collapsed, header + mosaic when expanded. */
-  private int getMediaHeight () {
-    if (isNoImagesCollapsed()) {
-      return collapsePanelHeight();
-    }
-    if (isNoImagesExpanded()) {
-      return collapsePanelHeight() + collapsePanelGap() + (mosaicWrapper != null ? mosaicWrapper.getHeight() : 0);
-    }
-    return mosaicWrapper != null ? mosaicWrapper.getHeight() : 0;
   }
 
   private String getCollapsedMediaSummary () {
@@ -1036,8 +996,8 @@ public class TGMessageMedia extends TGMessage {
 
     int cellLeft = getContentX();
     int cellTop = getContentY() + getCollapsePanelOffsetY();
-    int cellRight = cellLeft + getMediaWidth();
-    int cellBottom = cellTop + getMediaHeight() - getCollapsePanelOffsetY();
+    int cellRight = cellLeft + (isNoImagesCollapsed() ? getPanelMediaWidth() : mosaicWrapper.getWidth());
+    int cellBottom = cellTop + (isNoImagesCollapsed() ? 0 : mosaicWrapper.getHeight());
 
     if (wrapper != null && wrapper.onTouchEvent(view, e)) {
       return true;
@@ -1095,8 +1055,8 @@ public class TGMessageMedia extends TGMessage {
     }
     int cellLeft = getContentX();
     int cellTop = getContentY() + getCollapsePanelOffsetY();
-    int cellRight = cellLeft + getMediaWidth();
-    int cellBottom = cellTop + getMediaHeight() - getCollapsePanelOffsetY();
+    int cellRight = cellLeft + (isNoImagesCollapsed() ? getPanelMediaWidth() : mosaicWrapper.getWidth());
+    int cellBottom = cellTop + (isNoImagesCollapsed() ? 0 : mosaicWrapper.getHeight());
 
     return !(isHot() && !isViewOnce()) || x < cellLeft || x > cellRight || y < cellTop || y > cellBottom;
   }

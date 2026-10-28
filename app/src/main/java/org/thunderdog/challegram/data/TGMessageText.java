@@ -653,7 +653,8 @@ public class TGMessageText extends TGMessage {
     int height;
     if (useCollapsePanel()) {
       if (isPanelCollapsed()) {
-        return collapsePanelHeight();
+        // Header is drawn at startY + getTextTopOffset(); allocate exactly that extent
+        return collapsePanelHeight() + getTextTopOffset();
       }
       height = collapsePanelHeight() + collapsePanelGap() + Math.round(visibleText.getMetadata().getTotalHeight() + getTextTopOffset() * visibleText.getMetadata().getTotalVisibility());
     } else {

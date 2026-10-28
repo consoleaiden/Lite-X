@@ -555,6 +555,19 @@ public class SettingsAdapter extends RecyclerView.Adapter<SettingHolder> impleme
     U.replaceItems(this, oldItemCount);
   }
 
+  /** Replaces the item list without notifying; the caller issues targeted notifyItemRange* calls. */
+  public void replaceItemsSilently (final List<ListItem> items) {
+    this.items.clear();
+    if (items != null) {
+      this.items.addAll(items);
+    }
+  }
+
+  /** Current item list (live view; treat as read-only). */
+  public List<ListItem> getItemsList () {
+    return items;
+  }
+
   public int setItems (final List<ListItem> items, boolean hasCheckedItems) {
     int oldItemCount = getItemCount();
     this.items.clear();

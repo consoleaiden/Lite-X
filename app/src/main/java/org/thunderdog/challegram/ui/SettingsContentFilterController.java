@@ -16,7 +16,6 @@ import android.widget.LinearLayout;
 import android.widget.Toast;
 
 import androidx.annotation.IdRes;
-import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
 import org.thunderdog.challegram.R;
@@ -31,6 +30,8 @@ import org.thunderdog.challegram.v.CustomRecyclerView;
 
 import java.util.ArrayList;
 import java.util.List;
+
+import me.vkryl.core.StringUtils;
 
 public class SettingsContentFilterController extends RecyclerViewController<Void> implements View.OnClickListener {
   /** How many list entries are visible while a list is collapsed. */
@@ -62,6 +63,9 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
   private int expandedModule = MODULE_NONE;
 
   private boolean adUrlsExpanded, rulesExpanded;
+
+  /** Snapshot of the last applied item list, used for diff-based smooth updates. */
+  private final List<ListItem> lastItems = new ArrayList<>();
 
   @Override
   protected void onCreateView (Context context, CustomRecyclerView recyclerView) {
@@ -173,7 +177,63 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
       items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
     }
 
-    adapter.setItems(items, false);
+    applyItems(items);
+  }
+
+  /**
+   * Applies the newly built item list without a full refresh: computes the
+   * common prefix/suffix with the previous list and notifies RecyclerView
+   * only about the inserted/removed/changed middle range, so expanding or
+   * collapsing a module neither flashes nor scrolls.
+   */
+  private void applyItems (List<ListItem> newItems) {
+    int oldLen = lastItems.size();
+    int newLen = newItems.size();
+    int min = Math.min(oldLen, newLen);
+    int prefix = 0;
+    while (prefix < min && isSameItem(lastItems.get(prefix), newItems.get(prefix))) {
+      prefix++;
+    }
+    int suffix = 0;
+    while (suffix < min - prefix && isSameItem(lastItems.get(oldLen - 1 - suffix), newItems.get(newLen - 1 - suffix))) {
+      suffix++;
+    }
+    adapter.replaceItemsSilently(newItems);
+    lastItems.clear();
+    lastItems.addAll(newItems);
+    int removed = oldLen - prefix - suffix;
+    int inserted = newLen - prefix - suffix;
+    if (removed > 0) {
+      adapter.notifyItemRangeRemoved(prefix, removed);
+    }
+    if (inserted > 0) {
+      adapter.notifyItemRangeInserted(prefix, inserted);
+    }
+    if (removed == 0 && inserted == 0 && prefix + suffix < oldLen) {
+      adapter.notifyItemRangeChanged(prefix, oldLen - prefix - suffix);
+    }
+  }
+
+  private static boolean isSameItem (ListItem a, ListItem b) {
+    if (a.getViewType() != b.getViewType() || a.getId() != b.getId() ||
+      a.getIconResource() != b.getIconResource() ||
+      a.getStringResource() != b.getStringResource()) {
+      return false;
+    }
+    if (!StringUtils.equalsOrBothEmpty(a.getString(), b.getString())) {
+      return false;
+    }
+    Object da = a.getData(), db = b.getData();
+    return da == null ? db == null : da.equals(db);
+  }
+
+  /**
+   * Rebuilds the item list in place. Scroll position is preserved naturally,
+   * because RecyclerView keeps the anchor view when items are inserted or
+   * removed below the currently visible region.
+   */
+  private void rebuildPreservingScroll () {
+    buildCells();
   }
 
   /** Accordion section header: title + chevron reflecting the expanded state. */
@@ -191,33 +251,6 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
       expanded ? R.drawable.baseline_expand_less_24 : R.drawable.baseline_expand_more_24,
       expanded ? Lang.getString(R.string.FilterListShowLess) : Lang.getString(R.string.FilterListShowMore, count)));
     items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
-  }
-
-  /**
-   * Rebuilds the cell list while keeping the current scroll position, so that
-   * expanding / collapsing a module or list does not visually jump to the top.
-   */
-  private void rebuildPreservingScroll () {
-    RecyclerView recyclerView = getRecyclerView();
-    LinearLayoutManager layoutManager = recyclerView != null ? (LinearLayoutManager) recyclerView.getLayoutManager() : null;
-    final int anchorPosition = layoutManager != null ? layoutManager.findFirstVisibleItemPosition() : RecyclerView.NO_POSITION;
-    final int anchorOffset;
-    if (layoutManager != null && anchorPosition != RecyclerView.NO_POSITION) {
-      View anchorView = layoutManager.findViewByPosition(anchorPosition);
-      anchorOffset = anchorView != null ? anchorView.getTop() : 0;
-    } else {
-      anchorOffset = 0;
-    }
-    buildCells();
-    if (layoutManager != null && anchorPosition != RecyclerView.NO_POSITION) {
-      layoutManager.scrollToPositionWithOffset(anchorPosition, anchorOffset);
-      // Apply again after the layout pass settles (item counts may differ).
-      recyclerView.post(() -> {
-        if (anchorPosition < layoutManager.getItemCount()) {
-          layoutManager.scrollToPositionWithOffset(anchorPosition, anchorOffset);
-        }
-      });
-    }
   }
 
   private static String ruleTitle (ContentFilter.Rule rule) {
