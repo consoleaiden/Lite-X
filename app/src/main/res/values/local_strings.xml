@@ -28,8 +28,8 @@
   <string name="NoImagesEnabledInfo">开启后，频道消息中的图片和视频默认折叠成数量摘要面板，点击面板展开查看原图，再次点击面板头可重新折叠。仅对频道消息生效。</string>
   <string name="NoImagesPhotoCount">%1$d 张图片</string>
   <string name="NoImagesVideoCount">%1$d 个视频</string>
-  <string name="NoImagesCollapsedSummary">共 %1$s，点击展开</string>
-  <string name="NoImagesCollapsedGeneric">图片/视频已折叠，点击展开</string>
+  <string name="NoImagesCollapsedSummary">共 %1$s</string>
+  <string name="NoImagesCollapsedGeneric">图片/视频已折叠</string>
 
   <!-- Collapsible lists (custom feature) -->
   <string name="FilterListShowMore">展开全部（共 %1$d 条）</string>
@@ -45,7 +45,7 @@
   <string name="ContentFilterPatternHint">输入关键词或正则表达式</string>
   <string name="ContentFilterRegexHint">输入正则表达式，例如：广告|推广</string>
   <string name="ContentFilterInvalidRegex">正则表达式无效</string>
-  <string name="ContentFilteredCollapsed">内容已被过滤，点击查看</string>
+  <string name="ContentFilteredCollapsed">内容已被过滤</string>
   <string name="ContentFilteredPreview">消息已被过滤</string>
 
   <string name="AdFilterSection">屏蔽广告</string>
