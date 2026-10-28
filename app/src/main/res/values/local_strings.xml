@@ -43,6 +43,7 @@
   <string name="ContentFilterTypeKeyword">关键词</string>
   <string name="ContentFilterTypeRegex">正则表达式</string>
   <string name="ContentFilterPatternHint">输入关键词或正则表达式</string>
+  <string name="ContentFilterRegexHint">输入正则表达式，例如：广告|推广</string>
   <string name="ContentFilterInvalidRegex">正则表达式无效</string>
   <string name="ContentFilteredCollapsed">内容已被过滤，点击查看</string>
   <string name="ContentFilteredPreview">消息已被过滤</string>
