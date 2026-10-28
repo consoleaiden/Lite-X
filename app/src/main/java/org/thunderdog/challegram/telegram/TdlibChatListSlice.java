@@ -369,6 +369,72 @@ public final class TdlibChatListSlice implements Destroyable {
     });
   }
 
+  /**
+   * Re-evaluates the filter against every chat of the source list, emitting
+   * removal / addition / change events where needed. Used when a filter's
+   * decision depends on a setting that can change at runtime (for example the
+   * content filter hiding sponsored chats), so that the slice follows the
+   * change without being rebuilt from scratch.
+   */
+  public void refilter () {
+    if (isSuspended() || listener == null)
+      return;
+    tdlib.runOnTdlibThread(() -> {
+      if (isDestroyed() || listener == null)
+        return;
+      tdlib.ensureTdlibThread();
+      // 1) Drop chats that the filter no longer accepts.
+      synchronized (filteredList) {
+        for (int index = filteredList.size() - 1; index >= 0; index--) {
+          Entry entry = filteredList.get(index);
+          if (entry.keepPosition) {
+            continue;
+          }
+          if (filter != null && !filter.accept(entry.chat)) {
+            filteredList.remove(index);
+            if (index < displayCount) {
+              subListener.onChatRemoved(sourceList, entry.chat, index, new Tdlib.ChatChange(entry.effectivePosition, Tdlib.ChatChange.ALL));
+              displayCount--;
+              subListener.onChatListChanged(sourceList, ChangeFlags.ITEM_REMOVED);
+            }
+          }
+        }
+      }
+      // 2) Add chats that the filter now accepts, refresh the rest.
+      List<TdlibChatList.Entry> accepted = sourceList.listCopy(filter);
+      for (TdlibChatList.Entry sourceEntry : accepted) {
+        if (isDestroyed())
+          return;
+        tdlib.ensureTdlibThread();
+        final int existingIndex = indexOfChat(sourceEntry.chat.id);
+        if (existingIndex != -1) {
+          if (existingIndex < displayCount) {
+            subListener.onChatChanged(sourceList, sourceEntry.chat, existingIndex, new Tdlib.ChatChange(sourceEntry.effectivePosition, Tdlib.ChatChange.ALL));
+            subListener.onChatListChanged(sourceList, ChangeFlags.ITEM_METADATA_CHANGED);
+          }
+          continue;
+        }
+        TdApi.ChatPosition position = ChatPosition.findPosition(sourceEntry.chat, sourceList.chatList());
+        if (position == null || position.order == 0) {
+          continue;
+        }
+        Entry entry = new Entry(sourceEntry.chat, sourceList.chatList(), position, keepPositions);
+        final int atIndex;
+        synchronized (filteredList) {
+          atIndex = findInsertIndex(entry);
+          filteredList.add(atIndex, entry);
+        }
+        if (atIndex < displayCount) {
+          subListener.onChatAdded(sourceList, sourceEntry.chat, atIndex, new Tdlib.ChatChange(position, Tdlib.ChatChange.ALL));
+          displayCount++;
+          subListener.onChatListChanged(sourceList, ChangeFlags.ITEM_ADDED);
+        } else {
+          dispatchChats(0);
+        }
+      }
+    });
+  }
+
   private boolean isDestroyed;
 
   @Override

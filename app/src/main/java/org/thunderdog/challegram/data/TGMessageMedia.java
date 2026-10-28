@@ -888,9 +888,23 @@ public class TGMessageMedia extends TGMessage {
     return changed;
   }
 
-  /** Width of the media block: the real mosaic width, or the summary row width when collapsed. */
+  /** Width of the media block: the real mosaic width, or the summary bar width when collapsed. */
   private int getMediaWidth () {
+    if (isNoImagesCollapsed()) {
+      return getCollapsedBarWidth();
+    }
     return mosaicWrapper != null ? mosaicWrapper.getWidth() : 0;
+  }
+
+  /**
+   * Width of the collapsed summary bar. Compact and bubble-like on purpose:
+   * the real mosaic (and therefore a full-width channel photo) can span the
+   * whole screen, which made the placeholder look like a broken layout.
+   */
+  private int getCollapsedBarWidth () {
+    int textWidth = (int) Math.ceil(U.measureText(getCollapsedMediaSummary(), Paints.getTextPaint15(0xff000000)));
+    int reserved = drawBubbleTimeOverContent() ? Screen.dp(56f) : 0;
+    return Math.max(textWidth + Screen.dp(28f) + reserved, Screen.dp(140f));
   }
 
   /** Height of the media block: the real mosaic height, or the summary row height when collapsed. */

@@ -362,6 +362,10 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
     this.currentViews = new MultipleViewProvider();
     this.currentViews.setContentProvider(this);
     this.msg = msg;
+    // Restore a previously user-expanded "no images" block (state survives message rebuilds)
+    if (noImagesExpandedKeys.contains(noImagesKey(msg.chatId, msg.id))) {
+      this.noImagesExpanded = true;
+    }
     this.sponsoredMessage = sponsoredMessage;
     this.flags |= BitwiseUtils.optional(FLAG_BELOW_ALL_MESSAGES, isBelowAllMessages);
     this.messageReactions = new TGReactions(this, tdlib, msg.interactionInfo != null ? msg.interactionInfo.reactions : null, new TGReactions.MessageReactionsDelegate() {
@@ -4389,7 +4393,18 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
 
   // == No images mode ==
 
+  /**
+   * Messages whose photo/video block the user explicitly expanded. Kept in a
+   * static set so the state survives TGMessage rebuilds (new instances are
+   * created whenever the message list is reloaded).
+   */
+  private static final Set<String> noImagesExpandedKeys = new HashSet<>();
+
   private boolean noImagesExpanded;
+
+  private static String noImagesKey (long chatId, long messageId) {
+    return chatId + ":" + messageId;
+  }
 
   /**
    * Whether this message carries photo/video content that the "no images" mode can hide.
@@ -4417,6 +4432,7 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
   public boolean expandNoImages () {
     if (isNoImagesCollapsed()) {
       noImagesExpanded = true;
+      noImagesExpandedKeys.add(noImagesKey(getChatId(), getId()));
       return true;
     }
     return false;
@@ -4425,6 +4441,7 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
   public boolean collapseNoImages () {
     if (isNoImagesExpanded()) {
       noImagesExpanded = false;
+      noImagesExpandedKeys.remove(noImagesKey(getChatId(), getId()));
       return true;
     }
     return false;
@@ -4443,9 +4460,9 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
     if (!isCollapseToggleVisible()) {
       return false;
     }
-    int size = Screen.dp(26f);
-    int right = getActualRightContentEdge() - Screen.dp(5f);
-    int top = getContentY() + Screen.dp(5f);
+    int size = Screen.dp(30f);
+    int right = getActualRightContentEdge() - Screen.dp(6f);
+    int top = getContentY() + Screen.dp(6f);
     if (right - size < getContentX()) {
       return false;
     }
@@ -4462,10 +4479,11 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
     final int cx = (int) rect.centerX();
     final int cy = (int) rect.centerY();
     final int radius = (int) (rect.width() / 2f);
-    c.drawCircle(cx, cy, radius, Paints.fillingPaint(collapseTogglePressed ? 0xaa000000 : 0x66000000));
+    c.drawCircle(cx, cy, radius, Paints.fillingPaint(collapseTogglePressed ? 0xdd000000 : 0xa6000000));
+    c.drawCircle(cx, cy, radius - Screen.dp(1f), Paints.getProgressPaint(0xffffffff, Screen.dp(1.5f)));
 
-    final float halfWidth = Screen.dp(5f);
-    final float height = Screen.dp(3.5f);
+    final float halfWidth = Screen.dp(6f);
+    final float height = Screen.dp(4f);
     Path path = Paints.getPath();
     path.reset();
     path.moveTo(cx, cy - height);
@@ -4481,7 +4499,7 @@ public abstract class TGMessage implements InvalidateContentProvider, TdlibDeleg
       collapseTogglePressed = false;
       return false;
     }
-    rect.inset(-Screen.dp(6f), -Screen.dp(6f));
+    rect.inset(-Screen.dp(8f), -Screen.dp(8f));
     switch (e.getAction()) {
       case MotionEvent.ACTION_DOWN:
         collapseTogglePressed = rect.contains(e.getX(), e.getY());

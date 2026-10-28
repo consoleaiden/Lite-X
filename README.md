@@ -15,7 +15,7 @@
 | 项 | 值 |
 | --- | --- |
 | 应用名 | **Lite X**（仓库 Variables `APP_NAME`） |
-| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1837` → **1837000** |
+| 版本 | `versionCode = version.app × 1000`（Debug 时 +0），当前 `version.app=1838` → **1838000** |
 | flavor / ABI | `marshmallow`（minSdk 23）+ `arm64-v8a` / `armeabi-v7a` |
 | 构建方式 | GitHub Actions `.github/workflows/build-apk.yml`（`workflow_dispatch`），约 22 分钟 |
 | 应用内更新 | 读本仓库 `/releases/latest` |
@@ -233,6 +233,19 @@
 - **改动 1**：`MainActivity.showExperimentalAlert()` 方法体清空（保留方法签名与调用点，回滚只需还原方法体）。
 - **改动 2**：`Config.FORCE_DISABLE_NOTIFICATIONS` 由 `BuildConfig.EXPERIMENTAL && !BuildConfig.DEBUG` 改为 `false`。该常量是实验版**强制丢弃全部消息通知**的开关（`Tdlib.updateNotificationParameters` 把 `notification_group_count_max` 置 0、`TdlibNotificationHelper.accept()` 全部返回 false），也就是提示里「不能重新开启通知」的真实含义。置 false 后通知参数与正式版一致（group 25 / size 7~10）。
 - **注意**：这个包没有接 FCM（实验版不启用 google-services），所以后台推送仍依赖应用自身的长连接存活；前台/服务存活期间的通知立即恢复正常。
+
+### 23. 内容过滤设置页体验 + 列表即时刷新 + 布局修复（1838）
+- **折叠/展开不再跳回顶部**：`SettingsContentFilterController` 引入 `rebuildPreservingScroll()`，重建 cells 前记录 `findFirstVisibleItemPosition` + anchor view 的 `top`，`setItems` 后用 `scrollToPositionWithOffset` 恢复，并在 layout pass 后二次校准；三处列表的展开/收起、增删词条/规则全部改走该方法，实现无感切换。
+- **功能描述改为「!」浮动提示**：六个长描述（屏蔽广告、总开关、折叠模式、无图模式、敏感词开关、拼音模式）不再占 TYPE_DESCRIPTION 行，改为对应开关行名称前的 `baseline_error_24` 感叹号图标；`attachInfoTooltip` 在 `SettingView` 上挂触摸监听，点击行左侧 56dp 图标区调用 `ViewController.showInfoTooltip()` 浮动显示描述，点行其余区域仍是正常开关。正则示例也改为「正则示例」行，点击弹出 tooltip。
+- **启用/停用即时生效**（原来需要重启）：
+  - `ContentFilter` 新增主线程 `ChangeListener`（`addChangeListener/removeChangeListener`，`bumpVersion()` 时派发）；
+  - `ChatsController` 监听变更：重置 `contentFilterVersion`、`adapter.notifyAllChanged()` 刷新预览文本，并对已创建的 `TdlibChatListSlice` 调用新增的 `refilter()`——在 tdlib 线程上对源列表逐 chat 重新过滤，发移除/新增/变更事件，「默认频道」列表即时增删；
+  - `list()` 的 sponsored 过滤改为 accept() 时动态求值（不再在创建 slice 时固化）；
+  - `MessagesController` 同样监听，`reloadData()` 重建消息使隐藏/折叠立即反映；聊天分组列表与我的频道走 accept() 路径，同链路即时生效。
+- **消息布局修复 + 展开态持久化**（1836 引入的两个 bug）：
+  - 无图模式折叠占位条原来用 `mosaicWrapper.getWidth()`（频道大图可铺满全屏，看起来像布局错位）→ 改为按摘要文字实测宽度计算的窄条 `getCollapsedBarWidth()`（最少 140dp），气泡观感恢复；
+  - 展开后消息重建（滑动/新消息）导致展开状态丢失 → 展开过的消息键 `chatId:msgId` 存入静态 `noImagesExpandedKeys`，`TGMessage` 构造时恢复，点折叠按钮即移除；
+  - 折叠按钮加大到 30dp、加深底色并加白色描边圈，热区外扩 8dp，更好点中。
 
 
 

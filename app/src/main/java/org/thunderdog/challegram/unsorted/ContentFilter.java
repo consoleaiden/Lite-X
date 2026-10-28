@@ -16,6 +16,7 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import org.drinkless.tdlib.TdApi;
+import org.thunderdog.challegram.tool.UI;
 
 import java.nio.charset.Charset;
 import java.util.ArrayDeque;
@@ -25,6 +26,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 
@@ -610,6 +612,31 @@ public class ContentFilter {
 
   private static void bumpVersion () {
     version++;
+    if (!changeListeners.isEmpty()) {
+      // Deliver on the main thread so listeners may touch UI state directly.
+      UI.post(() -> {
+        for (ChangeListener listener : changeListeners) {
+          listener.onContentFilterChanged();
+        }
+      });
+    }
+  }
+
+  // == Change notifications ==
+
+  /** Notified on the main thread after any filter configuration change. */
+  public interface ChangeListener {
+    void onContentFilterChanged ();
+  }
+
+  private static final CopyOnWriteArrayList<ChangeListener> changeListeners = new CopyOnWriteArrayList<>();
+
+  public static void addChangeListener (@NonNull ChangeListener listener) {
+    changeListeners.add(listener);
+  }
+
+  public static void removeChangeListener (@NonNull ChangeListener listener) {
+    changeListeners.remove(listener);
   }
 
   // == Matching ==

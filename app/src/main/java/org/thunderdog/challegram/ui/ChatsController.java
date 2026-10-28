@@ -179,7 +179,10 @@ public class ChatsController extends TelegramViewController<ChatsController.Argu
 
   public ChatsController (Context context, Tdlib tdlib) {
     super(context, tdlib);
+    ContentFilter.addChangeListener(contentFilterListener);
   }
+
+  private final ContentFilter.ChangeListener contentFilterListener = this::checkContentFilterChanges;
 
   private MainController parentController;
 
@@ -464,14 +467,14 @@ public class ChatsController extends TelegramViewController<ChatsController.Argu
   public TdlibChatListSlice list () {
     if (list == null) {
       Filter<TdApi.Chat> effective = filter;
-      if (ContentFilter.blockAds()) {
-        final Filter<TdApi.Chat> base = filter;
-        effective = chat -> {
-          if (ContentFilter.isSponsoredChat(chat))
-            return false;
-          return base == null || base.accept(chat);
-        };
-      }
+      final Filter<TdApi.Chat> base = filter;
+      // The sponsored check is evaluated at accept() time so that toggling
+      // the content filter takes effect on the already created slice.
+      effective = chat -> {
+        if (ContentFilter.blockAds() && ContentFilter.isSponsoredChat(chat))
+          return false;
+        return base == null || base.accept(chat);
+      };
       this.list = tdlib.chatList(chatList()).slice(effective);
     }
     return list;
@@ -2403,6 +2406,10 @@ public class ChatsController extends TelegramViewController<ChatsController.Argu
         adapter.updateLocale(true);
         adapter.notifyAllChanged();
       }
+      // Re-evaluate sponsored chat filtering on the already created slice.
+      if (list != null) {
+        list.refilter();
+      }
     }
   }
 
@@ -2754,6 +2761,7 @@ public class ChatsController extends TelegramViewController<ChatsController.Argu
   @Override
   public void destroy () {
     super.destroy();
+    ContentFilter.removeChangeListener(contentFilterListener);
     if (liveLocationHelper != null) {
       liveLocationHelper.destroy();
     }

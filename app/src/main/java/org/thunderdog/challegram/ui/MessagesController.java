@@ -384,7 +384,10 @@ public class MessagesController extends ViewController<MessagesController.Argume
   public MessagesController (Context context, Tdlib tdlib) {
     super(context, tdlib);
     this.manager = new MessagesManager(this);
+    ContentFilter.addChangeListener(contentFilterListener);
   }
+
+  private final ContentFilter.ChangeListener contentFilterListener = this::checkContentFilterChanges;
 
   @Override
   public List<HapticMenuHelper.MenuItem> onCreateHapticMenu (View view) {
@@ -4286,6 +4289,8 @@ public class MessagesController extends ViewController<MessagesController.Argume
 
   @Override
   public void destroy () {
+    // NOTE: intentionally not calling super.destroy() here, as upstream doesn't.
+    ContentFilter.removeChangeListener(contentFilterListener);
     resetSelectableControl();
 
     discardAttachedFiles(false);

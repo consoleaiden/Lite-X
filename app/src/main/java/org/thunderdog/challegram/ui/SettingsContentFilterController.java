@@ -6,12 +6,15 @@ package org.thunderdog.challegram.ui;
 
 import android.app.AlertDialog;
 import android.content.Context;
+import android.view.MotionEvent;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.Toast;
 
 import androidx.annotation.IdRes;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import org.thunderdog.challegram.R;
 import org.thunderdog.challegram.component.base.SettingView;
@@ -71,11 +74,75 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
         } else if (id == R.id.btn_sensitiveFilterModePinyin) {
           view.getToggler().setRadioEnabled(ContentFilter.getSensitiveMode() == ContentFilter.SENSITIVE_MODE_PINYIN, isUpdate);
         }
+        attachInfoTooltip(item, view);
       }
     };
     buildCells();
     recyclerView.setAdapter(adapter);
   }
+
+  // == Info ("!") tooltips ==
+
+  /** Description shown as a tooltip when the "!" icon of a row is tapped, 0 if none. */
+  private static int infoForId (@IdRes int id) {
+    switch (id) {
+      case R.id.btn_contentFilterBlockAds:
+        return R.string.AdFilterEnabledInfo;
+      case R.id.btn_contentFilterEnabled:
+        return R.string.ContentFilterEnabledInfo;
+      case R.id.btn_contentFilterModeCollapse:
+        return R.string.ContentFilterModeCollapseInfo;
+      case R.id.btn_contentFilterNoImages:
+        return R.string.NoImagesEnabledInfo;
+      case R.id.btn_sensitiveFilterEnabled:
+        return R.string.SensitiveFilterEnabledInfo;
+      case R.id.btn_sensitiveFilterModePinyin:
+        return R.string.SensitiveFilterModePinyinInfo;
+      case R.id.btn_contentFilterRegexExamples:
+        return R.string.ContentFilterRegexExamples;
+      default:
+        return 0;
+    }
+  }
+
+  /**
+   * Rows with a long description show a small "!" icon before the name instead
+   * of a full-width description line; tapping the icon displays the description
+   * as a floating tooltip, keeping the page compact.
+   */
+  private void attachInfoTooltip (ListItem item, SettingView view) {
+    final int infoRes = infoForId(item.getId());
+    if (infoRes == 0) {
+      view.setOnTouchListener(null);
+      return;
+    }
+    view.setOnTouchListener((v, event) -> {
+      float x = event.getX();
+      if (Lang.rtl()) {
+        x = v.getWidth() - x;
+      }
+      boolean inIconZone = x >= 0 && x <= Screen.dp(56f);
+      if (!inIconZone) {
+        return false; // let the row behave normally (toggle / menu)
+      }
+      switch (event.getAction()) {
+        case MotionEvent.ACTION_DOWN:
+          v.setPressed(true);
+          return true;
+        case MotionEvent.ACTION_UP: {
+          v.setPressed(false);
+          showInfoTooltip(v, Lang.getString(infoRes));
+          return true;
+        }
+        case MotionEvent.ACTION_CANCEL:
+          v.setPressed(false);
+          return true;
+      }
+      return true;
+    });
+  }
+
+  // == Rebuilding ==
 
   private void buildCells () {
     List<ListItem> items = new ArrayList<>();
@@ -84,9 +151,8 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
 
     items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, R.string.AdFilterSection));
     items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
-    items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_contentFilterBlockAds, 0, R.string.AdFilterEnabled));
+    items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_contentFilterBlockAds, R.drawable.baseline_error_24, R.string.AdFilterEnabled));
     items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
-    items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.AdFilterEnabledInfo));
 
     List<String> adUrls = ContentFilter.getBlockedAdUrls();
     if (adUrls.isEmpty()) {
@@ -113,25 +179,22 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
 
     items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, R.string.ContentFilterTitle));
     items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
-    items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_contentFilterEnabled, 0, R.string.ContentFilterEnabled));
+    items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_contentFilterEnabled, R.drawable.baseline_error_24, R.string.ContentFilterEnabled));
     items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
-    items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.ContentFilterEnabledInfo));
 
     items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, R.string.ContentFilterMode));
     items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
     items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_contentFilterModeHide, 0, R.string.ContentFilterModeHide));
     items.add(new ListItem(ListItem.TYPE_SEPARATOR));
-    items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_contentFilterModeCollapse, 0, R.string.ContentFilterModeCollapse));
+    items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_contentFilterModeCollapse, R.drawable.baseline_error_24, R.string.ContentFilterModeCollapse));
     items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
-    items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.ContentFilterModeCollapseInfo));
 
     // == No images mode ==
 
     items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, R.string.NoImagesSection));
     items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
-    items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_contentFilterNoImages, 0, R.string.NoImagesEnabled));
+    items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_contentFilterNoImages, R.drawable.baseline_error_24, R.string.NoImagesEnabled));
     items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
-    items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.NoImagesEnabledInfo));
 
     List<ContentFilter.Rule> rules = ContentFilter.getRules();
     items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, Lang.getStringBold(R.string.ContentFilterRules, rules.size())));
@@ -156,24 +219,23 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
 
     items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
     items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_contentFilterAddRule, R.drawable.baseline_add_24, R.string.ContentFilterAddRule));
+    items.add(new ListItem(ListItem.TYPE_SEPARATOR));
+    items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_contentFilterRegexExamples, R.drawable.baseline_error_24, R.string.ContentFilterRegexExamplesTitle));
     items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
-    items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.ContentFilterRegexExamples));
 
     // == Sensitive words ==
 
     items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, R.string.SensitiveFilterSection));
     items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
-    items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_sensitiveFilterEnabled, 0, R.string.SensitiveFilterEnabled));
+    items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_sensitiveFilterEnabled, R.drawable.baseline_error_24, R.string.SensitiveFilterEnabled));
     items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
-    items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.SensitiveFilterEnabledInfo));
 
     items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, R.string.SensitiveFilterMode));
     items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
     items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_sensitiveFilterModeMask, 0, R.string.SensitiveFilterModeMask));
     items.add(new ListItem(ListItem.TYPE_SEPARATOR));
-    items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_sensitiveFilterModePinyin, 0, R.string.SensitiveFilterModePinyin));
+    items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_sensitiveFilterModePinyin, R.drawable.baseline_error_24, R.string.SensitiveFilterModePinyin));
     items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
-    items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.SensitiveFilterModePinyinInfo));
 
     List<String> sensitiveWords = ContentFilter.getSensitiveWords();
     items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, Lang.getStringBold(R.string.SensitiveFilterWords, sensitiveWords.size())));
@@ -203,6 +265,33 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
     adapter.setItems(items, false);
   }
 
+  /**
+   * Rebuilds the cell list while keeping the current scroll position, so that
+   * expanding / collapsing a list does not visually jump to the top.
+   */
+  private void rebuildPreservingScroll () {
+    RecyclerView recyclerView = getRecyclerView();
+    LinearLayoutManager layoutManager = recyclerView != null ? (LinearLayoutManager) recyclerView.getLayoutManager() : null;
+    final int anchorPosition = layoutManager != null ? layoutManager.findFirstVisibleItemPosition() : RecyclerView.NO_POSITION;
+    final int anchorOffset;
+    if (layoutManager != null && anchorPosition != RecyclerView.NO_POSITION) {
+      View anchorView = layoutManager.findViewByPosition(anchorPosition);
+      anchorOffset = anchorView != null ? anchorView.getTop() : 0;
+    } else {
+      anchorOffset = 0;
+    }
+    buildCells();
+    if (layoutManager != null && anchorPosition != RecyclerView.NO_POSITION) {
+      layoutManager.scrollToPositionWithOffset(anchorPosition, anchorOffset);
+      // Apply again after the layout pass settles (item counts may differ).
+      recyclerView.post(() -> {
+        if (anchorPosition < layoutManager.getItemCount()) {
+          layoutManager.scrollToPositionWithOffset(anchorPosition, anchorOffset);
+        }
+      });
+    }
+  }
+
   private static void addExpandRow (List<ListItem> items, @IdRes int id, boolean expanded, int count) {
     items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
     items.add(new ListItem(ListItem.TYPE_SETTING, id,
@@ -230,13 +319,15 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
       ContentFilter.setNoImagesEnabled(adapter.toggleView(v));
     } else if (id == R.id.btn_contentFilterToggleAdUrls) {
       adUrlsExpanded = !adUrlsExpanded;
-      buildCells();
+      rebuildPreservingScroll();
     } else if (id == R.id.btn_contentFilterToggleRules) {
       rulesExpanded = !rulesExpanded;
-      buildCells();
+      rebuildPreservingScroll();
     } else if (id == R.id.btn_sensitiveFilterToggleWords) {
       sensitiveWordsExpanded = !sensitiveWordsExpanded;
-      buildCells();
+      rebuildPreservingScroll();
+    } else if (id == R.id.btn_contentFilterRegexExamples) {
+      showInfoTooltip(v, Lang.getString(R.string.ContentFilterRegexExamples));
     } else if (id == R.id.btn_sensitiveFilterEnabled) {
       ContentFilter.setSensitiveEnabled(adapter.toggleView(v));
       adapter.updateValuedSettingById(R.id.btn_sensitiveFilterModeMask);
@@ -314,7 +405,7 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
       String text = input.getText() != null ? input.getText().toString().trim() : "";
       if (!text.isEmpty() && !text.equals(rule.pattern)) {
         ContentFilter.updateRule(index, text);
-        buildCells();
+        rebuildPreservingScroll();
         if (rule.isRegex()) {
           List<ContentFilter.Rule> updated = ContentFilter.getRules();
           ContentFilter.Rule changed = index < updated.size() ? updated.get(index) : null;
@@ -336,7 +427,7 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
     final String url = urls.get(index);
     openAlert(R.string.AdFilterRemoveUrl, url + "\n\n" + Lang.getString(R.string.AdFilterRemoveConfirm), (dialog, which) -> {
       ContentFilter.unblockAdUrl(index);
-      buildCells();
+      rebuildPreservingScroll();
     });
   }
 
@@ -367,7 +458,7 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
       String text = input.getText() != null ? input.getText().toString().trim() : "";
       if (!text.isEmpty()) {
         ContentFilter.addRule(type, text);
-        buildCells();
+        rebuildPreservingScroll();
         if (type == ContentFilter.TYPE_REGEX) {
           List<ContentFilter.Rule> rules = ContentFilter.getRules();
           ContentFilter.Rule added = rules.isEmpty() ? null : rules.get(rules.size() - 1);
@@ -388,7 +479,7 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
     }
     openAlert(R.string.ContentFilterRemoveRule, ruleTitle(rules.get(index)) + "\n\n" + Lang.getString(R.string.ContentFilterRemoveConfirm), (dialog, which) -> {
       ContentFilter.removeRuleAt(index);
-      buildCells();
+      rebuildPreservingScroll();
     });
   }
 
@@ -413,7 +504,7 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
       int added = ContentFilter.addSensitiveWords(text);
       if (added > 0) {
         UI.showToast(Lang.getString(R.string.SensitiveFilterAddedToast, added), Toast.LENGTH_SHORT);
-        buildCells();
+        rebuildPreservingScroll();
       } else {
         UI.showToast(R.string.SensitiveFilterDuplicateToast, Toast.LENGTH_SHORT);
       }
@@ -429,7 +520,7 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
     }
     openAlert(R.string.SensitiveFilterRemoveWord, words.get(index) + "\n\n" + Lang.getString(R.string.SensitiveFilterRemoveConfirm), (dialog, which) -> {
       ContentFilter.removeSensitiveWordAt(index);
-      buildCells();
+      rebuildPreservingScroll();
     });
   }
 }

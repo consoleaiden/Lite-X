@@ -35,6 +35,7 @@
   <string name="ContentFilteredPreview">消息已被过滤</string>
   <string name="ContentFilterRegexHint">例如：1[3-9][0-9]{9} 或 (加微信|返佣)</string>
   <string name="ContentFilterRegexExamples">常用正则示例（不区分大小写）：\n• 手机号：1[3-9][0-9]{9}\n• 邮箱：[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+[.][a-z]{2,}\n• 邀请链接：t[.]me/ 或 joinchat/\n• 关键词分组：(加微信|加V信|返佣|推广)\n• 连续刷屏：([!！?？]){3,}\n• 整行纯数字：[0-9]{5,}</string>
+  <string name="ContentFilterRegexExamplesTitle">正则示例</string>
 
   <string name="NoImagesSection">无图模式</string>
   <string name="NoImagesEnabled">启用无图模式</string>

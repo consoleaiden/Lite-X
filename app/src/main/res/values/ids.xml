@@ -1456,6 +1456,7 @@
   <item type="id" name="btn_contentFilterRemoveAdUrl" />
   <item type="id" name="btn_contentFilterToggleAdUrls" />
   <item type="id" name="btn_contentFilterToggleRules" />
+  <item type="id" name="btn_contentFilterRegexExamples" />
   <item type="id" name="btn_sensitiveFilterEnabled" />
   <item type="id" name="btn_sensitiveFilterModeMask" />
   <item type="id" name="btn_sensitiveFilterModePinyin" />
