@@ -395,7 +395,7 @@ public final class TdlibChatListSlice implements Destroyable {
             if (index < displayCount) {
               subListener.onChatRemoved(sourceList, entry.chat, index, new Tdlib.ChatChange(entry.effectivePosition, Tdlib.ChatChange.ALL));
               displayCount--;
-              subListener.onChatListChanged(sourceList, ChangeFlags.ITEM_REMOVED);
+              subListener.onChatListChanged(sourceList, ChatListListener.ChangeFlags.ITEM_REMOVED);
             }
           }
         }
@@ -410,7 +410,7 @@ public final class TdlibChatListSlice implements Destroyable {
         if (existingIndex != -1) {
           if (existingIndex < displayCount) {
             subListener.onChatChanged(sourceList, sourceEntry.chat, existingIndex, new Tdlib.ChatChange(sourceEntry.effectivePosition, Tdlib.ChatChange.ALL));
-            subListener.onChatListChanged(sourceList, ChangeFlags.ITEM_METADATA_CHANGED);
+            subListener.onChatListChanged(sourceList, ChatListListener.ChangeFlags.ITEM_METADATA_CHANGED);
           }
           continue;
         }
@@ -427,7 +427,7 @@ public final class TdlibChatListSlice implements Destroyable {
         if (atIndex < displayCount) {
           subListener.onChatAdded(sourceList, sourceEntry.chat, atIndex, new Tdlib.ChatChange(position, Tdlib.ChatChange.ALL));
           displayCount++;
-          subListener.onChatListChanged(sourceList, ChangeFlags.ITEM_ADDED);
+          subListener.onChatListChanged(sourceList, ChatListListener.ChangeFlags.ITEM_ADDED);
         } else {
           dispatchChats(0);
         }

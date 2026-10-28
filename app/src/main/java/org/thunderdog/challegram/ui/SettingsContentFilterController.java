@@ -85,23 +85,22 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
 
   /** Description shown as a tooltip when the "!" icon of a row is tapped, 0 if none. */
   private static int infoForId (@IdRes int id) {
-    switch (id) {
-      case R.id.btn_contentFilterBlockAds:
-        return R.string.AdFilterEnabledInfo;
-      case R.id.btn_contentFilterEnabled:
-        return R.string.ContentFilterEnabledInfo;
-      case R.id.btn_contentFilterModeCollapse:
-        return R.string.ContentFilterModeCollapseInfo;
-      case R.id.btn_contentFilterNoImages:
-        return R.string.NoImagesEnabledInfo;
-      case R.id.btn_sensitiveFilterEnabled:
-        return R.string.SensitiveFilterEnabledInfo;
-      case R.id.btn_sensitiveFilterModePinyin:
-        return R.string.SensitiveFilterModePinyinInfo;
-      case R.id.btn_contentFilterRegexExamples:
-        return R.string.ContentFilterRegexExamples;
-      default:
-        return 0;
+    if (id == R.id.btn_contentFilterBlockAds) {
+      return R.string.AdFilterEnabledInfo;
+    } else if (id == R.id.btn_contentFilterEnabled) {
+      return R.string.ContentFilterEnabledInfo;
+    } else if (id == R.id.btn_contentFilterModeCollapse) {
+      return R.string.ContentFilterModeCollapseInfo;
+    } else if (id == R.id.btn_contentFilterNoImages) {
+      return R.string.NoImagesEnabledInfo;
+    } else if (id == R.id.btn_sensitiveFilterEnabled) {
+      return R.string.SensitiveFilterEnabledInfo;
+    } else if (id == R.id.btn_sensitiveFilterModePinyin) {
+      return R.string.SensitiveFilterModePinyinInfo;
+    } else if (id == R.id.btn_contentFilterRegexExamples) {
+      return R.string.ContentFilterRegexExamples;
+    } else {
+      return 0;
     }
   }
 
