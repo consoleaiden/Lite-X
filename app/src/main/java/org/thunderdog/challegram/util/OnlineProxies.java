@@ -65,6 +65,16 @@ public final class OnlineProxies {
   public static final String SOURCE_URL =
     "https://raw.githubusercontent.com/consoleaiden/telegram-mtproto-proxy-list/main/top100.json";
 
+  /**
+   * 按顺序尝试的订阅源：raw.githubusercontent.com 在部分网络（尤其国内直连）下不可达，
+   * 因此附带 jsDelivr 的 GitHub 镜像作为兜底，任意一个成功即停止。
+   */
+  private static final String[] SOURCE_URLS = {
+    SOURCE_URL,
+    "https://cdn.jsdelivr.net/gh/consoleaiden/telegram-mtproto-proxy-list@main/top100.json",
+    "https://fastly.jsdelivr.net/gh/consoleaiden/telegram-mtproto-proxy-list@main/top100.json"
+  };
+
   public static final int STATE_IDLE = 0;
   public static final int STATE_LOADING = 1;
   public static final int STATE_READY = 2;
@@ -190,11 +200,28 @@ public final class OnlineProxies {
    * 同步拉取并解析。**必须在后台线程调用**，不修改任何共享状态。
    */
   public static @NonNull FetchResult fetchSync () {
+    String lastError = null;
+    for (int i = 0; i < SOURCE_URLS.length; i++) {
+      final String url = SOURCE_URLS[i];
+      final FetchResult result = fetchFrom(url);
+      if (result.entries != null) {
+        if (i > 0) {
+          Log.i("Online proxy list fetched from mirror %d", i);
+        }
+        return result;
+      }
+      lastError = result.error;
+      Log.i("Online proxy source %d failed: %s", i, lastError);
+    }
+    return new FetchResult(null, null, 0, lastError != null ? lastError : "未知错误");
+  }
+
+  private static @NonNull FetchResult fetchFrom (@NonNull String url) {
     HttpURLConnection connection = null;
     try {
-      connection = (HttpURLConnection) new URL(SOURCE_URL).openConnection();
-      connection.setConnectTimeout(15000);
-      connection.setReadTimeout(20000);
+      connection = (HttpURLConnection) new URL(url).openConnection();
+      connection.setConnectTimeout(10000);
+      connection.setReadTimeout(15000);
       connection.setRequestProperty("Accept", "application/json");
       connection.setRequestProperty("User-Agent", "Lite-X");
       connection.setUseCaches(false);

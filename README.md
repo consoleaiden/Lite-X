@@ -267,7 +267,7 @@
 - `version.app=1846`（versionCode 1846000）。
 
 ### 25. 代理页「在线代理」：拉取 / 全部测试 / 添加到常用（1847）
-- **入口**：设置 → 代理 → 「添加代理」区块下方新增「在线代理」段：`拉取代理`、`全部测试` 两个按钮 + 一条状态说明 + 独立代理列表。数据来自 `consoleaiden/telegram-mtproto-proxy-list` 的 `top100.json`（`raw.githubusercontent.com` 直连地址）。
+- **入口**：设置 → 代理 → 「添加代理」区块下方新增「在线代理」段：`拉取代理`、`全部测试` 两个按钮 + 一条状态说明 + 独立代理列表。数据来自 `consoleaiden/telegram-mtproto-proxy-list` 的 `top100.json`（`raw.githubusercontent.com` 直连地址；国内常被墙，故附带 `cdn/fastly.jsdelivr.net` 的 GitHub 镜像作兜底，按顺序尝试、任一成功即停，三者内容经校验完全一致）。
 - **数据隔离**：在线列表只存在于内存（`util/OnlineProxies`），**不写入** `Settings` 的代理列表；重复拉取整体覆盖刷新，状态行显示「已拉取 N 条 · 数据时间 …」。只有用户点「添加到常用」或点击应用时，才会通过 `Settings.addOrUpdateProxy` 进入原有列表。原「代理连接」列表的数据与交互未改。
 - **测速选型（关键决策）**：没有复用 `Tdlib.pingProxy`，因为它内部走 `TdApi.AddProxy`，会把每个被测试的代理注册进 TDLib 的持久化代理表——100 条会污染本地配置，且重复拉取后再测可能因「代理已存在」返回错误而被误判为不可用。改为 TCP 握手 RTT（`InetAddress.getByName` + `Socket.connect(timeout)`），结果仍复用页面既有的 `pingMs` 语义（`PROXY_TIME_LOADING` / `>=0` / `PROXY_TIME_EMPTY`）与文案颜色（`ProxyChecking` / `ProxyAvailable` / `ProxyError`）。
 - **并发与中断**：固定线程池 6 并发、单条 4s 超时；进度显示在按钮右侧（`12/100`）与状态行；运行中按钮变「中断测试」，点击立即中断并把仍在「检查中」的条目还原为「未测试」。完成后按本机延迟升序排序（失败/未测的按源站排名垫底）。
