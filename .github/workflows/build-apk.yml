@@ -270,6 +270,18 @@ jobs:
           ls -lh apk-out
           cd apk-out && sha256sum *.apk | tee ../apk-out/SHA256.txt
 
+      - name: Keep ProGuard/R8 mapping for crash deobfuscation
+        id: mapping
+        run: |
+          set -e
+          mkdir -p apk-out
+          if find app/build/outputs/mapping -name 'mapping.txt' -type f | grep -q .; then
+            find app/build/outputs/mapping -name 'mapping.txt' -type f -exec cp {} "apk-out/mapping-${ABI}.txt" \;
+            ls -lh apk-out/mapping-*.txt
+          else
+            echo "::warning::no ProGuard mapping.txt found, release obfuscated crashes will not be deobfuscatable"
+          fi
+
       - name: Inspect APK metadata
         id: badging
         run: |
@@ -302,8 +314,7 @@ jobs:
           name: tgx-${{ env.FLAVOR }}-${{ env.ABI }}-${{ env.BUILD_TYPE }}
           path: |
             apk-out/*.apk
-            apk-out/version-code-*.txt
-            apk-out/version-name-*.txt
+            apk-out/*.txt
           if-no-files-found: error
           retention-days: 30
 

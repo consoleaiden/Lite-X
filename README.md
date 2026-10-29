@@ -241,6 +241,14 @@
 - **即时生效**：所有变更 `bumpVersion()`；`MessagesController` / `ChatsController` 在原有 `checkContentFilterChanges()` 里并行比对 `SensitiveWords.version()`，返回聊天窗口/聊天列表时即触发重建，开关关闭立即恢复原文。
 - `version.app=1844`（versionCode 1844000）。
 
+### 23. 敏感词：列表页标题缓存失效修复 + 崩溃可定位化（1845）
+- **现象**：总开关切换后，聊天列表里「已经渲染过」的频道名不刷新（新滑出来的新行是新的、重启才全生效），而聊天窗口内消息正常。
+- **根因**：`Text.Builder` 在**构建 Text 的那一刻**才打码，而 `TGChat.trimmedTitle` 只在 `changed || lastAvailWidth != avail` 时重建。`ChatsController` 的版本感知明明调用了 `adapter.updateLocale(true)` → `chat.updateLocale(true)` → `layoutTitle(false)`，但宽度没变 ⇒ 标题 Text 不重建，永远停在旧状态。（预览文本 `setText()` 末尾是无条件 `layoutText()`，所以那一列本来就是对的。）
+- **修法**：`TGChat` 增加 `trimmedTitleVersion`，`layoutTitle` 的重建条件加入 `trimmedTitleVersion != SensitiveWords.version()`；即不依赖「是否有 tdlIb 事件」，只要打码配置变了，下一次布局就重建标题。
+- **崩溃归因基建**：Release 是 R8 混淆的，走的 symbols（`zt5.F0` 等）无法反查，而 CI 原本没保留映射 → 在 workflow 里新增「Keep ProGuard/R8 mapping」步骤，把 `app/build/outputs/mapping/**/mapping.txt` 随 Actions artifact 保存（release 只发布 apk + SHA256.txt，mapping 不进公开 release）。以后再崩就能把匿名栈还原成真实类/方法。
+- **顺带加固**：`MessagesController` 中新增的敏感词分支改为 `getChat() != null` 才 `reloadData()`，避免任何「chat 还没就绪就 kick loader」的可能。
+- `version.app=1845`（versionCode 1845000）。
+
 
 ---
 

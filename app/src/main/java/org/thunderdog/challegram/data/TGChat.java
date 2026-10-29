@@ -41,6 +41,7 @@ import org.thunderdog.challegram.tool.Icons;
 import org.thunderdog.challegram.tool.Paints;
 import org.thunderdog.challegram.tool.Screen;
 import org.thunderdog.challegram.tool.UI;
+import org.thunderdog.challegram.unsorted.SensitiveWords;
 import org.thunderdog.challegram.unsorted.Settings;
 import org.thunderdog.challegram.util.EmojiStatusHelper;
 import org.thunderdog.challegram.util.ReactionsCounterDrawable;
@@ -111,6 +112,8 @@ public class TGChat implements TdlibStatusManager.HelperTarget, ContentPreview.R
 
   private String title;
   private Text trimmedTitle;
+  /** SensitiveWords.version() that was used to build the cached trimmed title. */
+  private int trimmedTitleVersion = -1;
 
   private @Nullable EmojiStatusHelper.EmojiStatusDrawable emojiStatusDrawable;
 
@@ -937,7 +940,13 @@ public class TGChat implements TdlibStatusManager.HelperTarget, ContentPreview.R
       avail -= reactionsWidth + (reactionsWidth > 0 ? Screen.dp(3) : 0);
     }
 
-    if (changed || lastAvailWidth != avail) {
+    // Lite-X custom: the cached title is built through Text.Builder, which is
+    // where sensitive words get masked. Rebuild it whenever the masking
+    // configuration changed, otherwise already laid out rows would keep
+    // displaying the previous (masked / unmasked) title forever.
+    int sensitiveWordsVersion = SensitiveWords.version();
+    if (changed || lastAvailWidth != avail || trimmedTitleVersion != sensitiveWordsVersion) {
+      trimmedTitleVersion = sensitiveWordsVersion;
       lastAvailWidth = avail;
       if (StringUtils.isEmpty(title)) {
         trimmedTitle = null;

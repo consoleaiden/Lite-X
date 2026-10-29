@@ -4291,7 +4291,11 @@ public class MessagesController extends ViewController<MessagesController.Argume
     int wordsVersion = SensitiveWords.version();
     if (sensitiveWordsVersion != wordsVersion) {
       sensitiveWordsVersion = wordsVersion;
-      reloadData();
+      // Never kick the loader while the chat is not available yet: reloadData()
+      // relies on the chat being loaded, and this check also runs on resume.
+      if (getChat() != null) {
+        reloadData();
+      }
     }
   }
 
