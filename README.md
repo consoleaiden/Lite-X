@@ -266,6 +266,16 @@
   - `MessagesController.showActionBotButton/showActionUnblockButton`：显式 `chat != null &&` 守卫。
 - `version.app=1846`（versionCode 1846000）。
 
+### 25. 代理页「在线代理」：拉取 / 全部测试 / 添加到常用（1847）
+- **入口**：设置 → 代理 → 「添加代理」区块下方新增「在线代理」段：`拉取代理`、`全部测试` 两个按钮 + 一条状态说明 + 独立代理列表。数据来自 `consoleaiden/telegram-mtproto-proxy-list` 的 `top100.json`（`raw.githubusercontent.com` 直连地址）。
+- **数据隔离**：在线列表只存在于内存（`util/OnlineProxies`），**不写入** `Settings` 的代理列表；重复拉取整体覆盖刷新，状态行显示「已拉取 N 条 · 数据时间 …」。只有用户点「添加到常用」或点击应用时，才会通过 `Settings.addOrUpdateProxy` 进入原有列表。原「代理连接」列表的数据与交互未改。
+- **测速选型（关键决策）**：没有复用 `Tdlib.pingProxy`，因为它内部走 `TdApi.AddProxy`，会把每个被测试的代理注册进 TDLib 的持久化代理表——100 条会污染本地配置，且重复拉取后再测可能因「代理已存在」返回错误而被误判为不可用。改为 TCP 握手 RTT（`InetAddress.getByName` + `Socket.connect(timeout)`），结果仍复用页面既有的 `pingMs` 语义（`PROXY_TIME_LOADING` / `>=0` / `PROXY_TIME_EMPTY`）与文案颜色（`ProxyChecking` / `ProxyAvailable` / `ProxyError`）。
+- **并发与中断**：固定线程池 6 并发、单条 4s 超时；进度显示在按钮右侧（`12/100`）与状态行；运行中按钮变「中断测试」，点击立即中断并把仍在「检查中」的条目还原为「未测试」。完成后按本机延迟升序排序（失败/未测的按源站排名垫底）。
+- **索引计算改造**：原页面把「代理列表起始下标」写死为 `7 / 11`（`cellIndexToProxyIndex`、`indexOfProxyCellByProxyIndex`、`indexOfProxy`）。新增区块插在中间后这些常量全部失效，改为 `firstProxyCellIndex()` = `adapter.indexOfViewById(btn_noProxy) + 2` 动态推导；`indexOfProxy(NONE)` 也改为直接查 `btn_noProxy` 行。这是原列表拖动排序、测速状态刷新能继续工作的前提。
+- **刷新策略**：整页 ListItem 由唯一来源 `buildItems()` 生成，运行期变化走 `applyItems()` 的前后缀 diff（同条数时 `notifyItemRangeChanged`，否则 insert/remove 中间段），避免整页重绑定导致的闪烁与滚动跳动。
+- **长按菜单**：`应用此代理` / `添加到常用`（已在常用列表时不显示）/ `编辑代理`（用 `id=PROXY_ID_NONE` 的临时对象预填编辑器，保存即新增，不会覆盖已有条目）/ `分享` / `复制链接`（自行拼 `t.me/proxy` 链接，避免 TDLib 往返）/ `从在线列表移除`。
+- `version.app=1847`（versionCode 1847000）。
+
 
 ---
 

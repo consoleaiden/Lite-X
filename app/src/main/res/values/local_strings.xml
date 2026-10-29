@@ -164,4 +164,29 @@
   <!-- My channels (custom feature, not part of the upstream app) -->
   <string name="MyChannels">我的频道</string>
   <string name="NoCreatedChannels">**还没有创建任何频道**\n\n你创建的频道会集中显示在这里，方便快速进入管理</string>
+
+  <!-- Online proxies (custom feature, not part of the upstream app) -->
+  <string name="OnlineProxyTitle">在线代理</string>
+  <string name="OnlineProxyFetch">拉取代理</string>
+  <string name="OnlineProxyTestAll">全部测试</string>
+  <string name="OnlineProxyTestStop">中断测试</string>
+  <string name="OnlineProxyProgress">%1$s/%2$s</string>
+  <string name="OnlineProxyStatusIdle">从 GitHub 拉取 top100 代理列表后显示在这里，可批量测试并从快到慢排序。该列表每次拉取都会覆盖，喜欢的代理请添加到常用。</string>
+  <string name="OnlineProxyStatusLoading">正在拉取代理列表…</string>
+  <string name="OnlineProxyStatusReady">已拉取 %1$s 条 · 数据时间 %2$s</string>
+  <string name="OnlineProxyStatusReadyNoDate">已拉取 %1$s 条</string>
+  <string name="OnlineProxyStatusEmpty">拉取成功，但没有可用的代理（数据为空或格式异常）</string>
+  <string name="OnlineProxyStatusError">拉取失败：%1$s</string>
+  <string name="OnlineProxyStatusTesting">测试中 %1$s/%2$s，点「中断测试」可停止</string>
+  <string name="OnlineProxyStatusTested">已按本机速度排序，共 %1$s 条，最快的在最前</string>
+  <string name="OnlineProxyNotTested">未测试</string>
+  <string name="OnlineProxyNotTestedServerPing">未测试 · 源站 %1$s</string>
+  <string name="OnlineProxyAvailableSaved">可用 (%1$s) · 已添加到常用</string>
+  <string name="OnlineProxyFetched">已拉取 %1$s 条</string>
+  <string name="OnlineProxyApplied">已应用：%1$s</string>
+  <string name="OnlineProxyAddedToSaved">已添加到常用：%1$s</string>
+  <string name="OnlineProxyApply">应用此代理</string>
+  <string name="OnlineProxyAddToSaved">添加到常用</string>
+  <string name="OnlineProxyRemoveFromList">从在线列表移除</string>
+  <string name="OnlineProxyNeedFetch">请先点击「拉取代理」获取列表</string>
 </resources>

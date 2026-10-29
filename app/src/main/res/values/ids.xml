@@ -1495,4 +1495,13 @@
 
   <!-- My channels (custom feature) -->
   <item type="id" name="btn_myChannels" />
+
+  <!-- Online proxies (custom feature) -->
+  <item type="id" name="btn_proxyFetchOnline" />
+  <item type="id" name="btn_proxyTestOnline" />
+  <item type="id" name="btn_proxyOnlineStatus" />
+  <item type="id" name="btn_onlineProxy" />
+  <item type="id" name="btn_onlineProxyApply" />
+  <item type="id" name="btn_onlineProxyAddToSaved" />
+  <item type="id" name="btn_onlineProxyRemove" />
 </resources>

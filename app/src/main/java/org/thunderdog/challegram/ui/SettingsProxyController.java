@@ -15,8 +15,10 @@
 package org.thunderdog.challegram.ui;
 
 import android.content.Context;
+import android.text.TextUtils;
 import android.view.MotionEvent;
 import android.view.View;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -41,6 +43,7 @@ import org.thunderdog.challegram.theme.ColorId;
 import org.thunderdog.challegram.tool.Strings;
 import org.thunderdog.challegram.tool.UI;
 import org.thunderdog.challegram.unsorted.Settings;
+import org.thunderdog.challegram.util.OnlineProxies;
 import org.thunderdog.challegram.util.StringList;
 import org.thunderdog.challegram.v.CustomRecyclerView;
 import org.thunderdog.challegram.widget.RadioView;
@@ -386,6 +389,365 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
     items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.UseProxyForCallsInfo));
   }
 
+  // region 在线代理（自定义功能）
+
+  /** 在线代理行的 longId 命名空间：用负数，避免与已保存代理的 id（正数）冲突 */
+  private static final int ONLINE_PROXY_LONG_ID_BASE = -1;
+
+  private boolean onlineTesting;
+  private int onlineTestingDone, onlineTestingTotal;
+  private @Nullable OnlineProxies.PingTask onlinePingTask;
+
+  /**
+   * 重建整页 ListItem。这是唯一的布局来源：onCreateView 与运行期刷新都走这里，
+   * 保证「在线代理」区块增删与索引计算永远一致。
+   */
+  private void buildItems (@NonNull List<ListItem> items) {
+    items.clear();
+
+    items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_addProxy, 0, R.string.ProxyAdd)); // TODO design: icon
+    items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
+    if (hasProxyAutoSwitchSettings) {
+      Collections.addAll(items, newAutoSwitchItems());
+    }
+    items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.ProxyInfo));
+
+    // 在线代理：独立数据源，每次拉取整体覆盖；只有「添加到常用」才会进入下方列表
+    items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, R.string.OnlineProxyTitle));
+    items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
+    items.add(new ListItem(ListItem.TYPE_VALUED_SETTING_COMPACT, R.id.btn_proxyFetchOnline, R.drawable.baseline_cloud_download_24, R.string.OnlineProxyFetch));
+    items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
+    items.add(new ListItem(ListItem.TYPE_VALUED_SETTING_COMPACT, R.id.btn_proxyTestOnline, R.drawable.baseline_sync_24, R.string.OnlineProxyTestAll));
+    items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
+    items.add(new ListItem(ListItem.TYPE_DESCRIPTION, R.id.btn_proxyOnlineStatus, 0, 0, buildOnlineStatusText(), 0, false));
+
+    final List<OnlineProxies.Entry> online = OnlineProxies.getEntries();
+    if (!online.isEmpty()) {
+      items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
+      for (int i = 0; i < online.size(); i++) {
+        if (i > 0) {
+          items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
+        }
+        items.add(newOnlineProxyItem(online.get(i), i));
+      }
+      items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
+    }
+
+    items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, R.string.ProxyConnections));
+    items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
+    items.add(new ListItem(ListItem.TYPE_VALUED_SETTING_COMPACT_WITH_RADIO, R.id.btn_noProxy, 0, R.string.ProxyNone));
+    for (Settings.Proxy proxy : proxies) {
+      items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
+      items.add(newProxyItem(proxy));
+    }
+    items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
+
+    if (canUseForCalls) {
+      addProxyCallItems(items);
+    }
+  }
+
+  private ListItem newOnlineProxyItem (@NonNull OnlineProxies.Entry entry, int index) {
+    return new ListItem(ListItem.TYPE_VALUED_SETTING_COMPACT_WITH_RADIO, R.id.btn_onlineProxy)
+      .setLongId(ONLINE_PROXY_LONG_ID_BASE - index)
+      .setData(entry);
+  }
+
+  /** 只重建 ListItem 列表并做差量刷新：不变的单元格不重新绑定，避免闪烁与滚动位置跳动。 */
+  private void rebuildItems () {
+    if (adapter == null || isDestroyed()) {
+      return;
+    }
+    List<ListItem> items = new ArrayList<>();
+    buildItems(items);
+    applyItems(items);
+  }
+
+  private void applyItems (@NonNull List<ListItem> next) {
+    final List<ListItem> current = adapter.getItems();
+    final int oldSize = current.size();
+    final int newSize = next.size();
+    int prefix = 0;
+    while (prefix < oldSize && prefix < newSize && isSameCell(current.get(prefix), next.get(prefix))) {
+      prefix++;
+    }
+    int suffix = 0;
+    while (suffix < oldSize - prefix && suffix < newSize - prefix &&
+      isSameCell(current.get(oldSize - 1 - suffix), next.get(newSize - 1 - suffix))) {
+      suffix++;
+    }
+    final int oldMiddle = oldSize - prefix - suffix;
+    final int newMiddle = newSize - prefix - suffix;
+    current.clear();
+    current.addAll(next);
+    if (oldMiddle == newMiddle) {
+      if (newMiddle > 0) {
+        adapter.notifyItemRangeChanged(prefix, newMiddle);
+      }
+    } else {
+      if (oldMiddle > 0) {
+        adapter.notifyItemRangeRemoved(prefix, oldMiddle);
+      }
+      if (newMiddle > 0) {
+        adapter.notifyItemRangeInserted(prefix, newMiddle);
+      }
+    }
+  }
+
+  private static boolean isSameCell (@NonNull ListItem a, @NonNull ListItem b) {
+    return a.getViewType() == b.getViewType()
+      && a.getId() == b.getId()
+      && a.getIconResource() == b.getIconResource()
+      && a.getLongId() == b.getLongId()
+      && a.getData() == b.getData()
+      && TextUtils.equals(a.getString(), b.getString());
+  }
+
+  private CharSequence buildOnlineStatusText () {
+    if (onlineTesting) {
+      return Lang.getString(R.string.OnlineProxyStatusTesting, onlineTestingDone, onlineTestingTotal);
+    }
+    switch (OnlineProxies.getState()) {
+      case OnlineProxies.STATE_LOADING:
+        return Lang.getString(R.string.OnlineProxyStatusLoading);
+      case OnlineProxies.STATE_READY: {
+        final int count = OnlineProxies.getEntries().size();
+        final String generatedAt = formatGeneratedAt(OnlineProxies.getGeneratedAt());
+        return generatedAt != null ?
+          Lang.getString(R.string.OnlineProxyStatusReady, count, generatedAt) :
+          Lang.getString(R.string.OnlineProxyStatusReadyNoDate, count);
+      }
+      case OnlineProxies.STATE_EMPTY:
+        return Lang.getString(R.string.OnlineProxyStatusEmpty);
+      case OnlineProxies.STATE_ERROR:
+        return Lang.getString(R.string.OnlineProxyStatusError, OnlineProxies.getError() != null ? OnlineProxies.getError() : "unknown");
+      case OnlineProxies.STATE_IDLE:
+      default:
+        return Lang.getString(R.string.OnlineProxyStatusIdle);
+    }
+  }
+
+  private static @Nullable String formatGeneratedAt (@Nullable String iso) {
+    if (StringUtils.isEmpty(iso)) {
+      return null;
+    }
+    // 2026-10-29T09:10:05Z → 2026-10-29 09:10 UTC
+    if (iso.length() >= 16 && iso.charAt(10) == 'T') {
+      return iso.substring(0, 10) + " " + iso.substring(11, 16) + " UTC";
+    }
+    return iso;
+  }
+
+  /** 状态展示复用本页既有的 ping 语义与配色 */
+  private void getOnlineState (@NonNull OnlineProxies.Entry entry, DisplayInfo out) {
+    out.reset();
+    if (entry.pingMs == Settings.PROXY_TIME_LOADING) {
+      out.value = Lang.getString(R.string.ProxyChecking);
+    } else if (entry.pingMs >= 0) {
+      out.colorId = ColorId.textSecure;
+      final String ping = Lang.getString(R.string.format_ping, Strings.buildCounter(entry.pingMs));
+      out.value = findSavedProxy(entry) != null ?
+        Lang.getString(R.string.OnlineProxyAvailableSaved, ping) :
+        Lang.getString(R.string.ProxyAvailable, ping);
+    } else if (entry.pingMs == Settings.PROXY_TIME_EMPTY) {
+      out.colorId = ColorId.textNegative;
+      out.value = Settings.instance().checkProxySetting(Settings.PROXY_FLAG_SHOW_ERRORS) ?
+        Lang.getString(R.string.ProxyErrorDetailed, entry.pingError == null ? "unknown" : entry.pingError) :
+        Lang.getString(R.string.ProxyError);
+    } else {
+      out.value = entry.serverLatencyMs >= 0 ?
+        Lang.getString(R.string.OnlineProxyNotTestedServerPing, Lang.getString(R.string.format_ping, Strings.buildCounter(entry.serverLatencyMs))) :
+        Lang.getString(R.string.OnlineProxyNotTested);
+    }
+    if (out.value instanceof String) {
+      out.value = Lang.lowercase((String) out.value);
+    }
+  }
+
+  /** 该在线代理是否已在「常用」列表中 */
+  private @Nullable Settings.Proxy findSavedProxy (@NonNull OnlineProxies.Entry entry) {
+    for (Settings.Proxy proxy : proxies) {
+      if (OnlineProxies.isSameProxy(proxy.proxy, entry.proxy)) {
+        return proxy;
+      }
+    }
+    return null;
+  }
+
+  private void fetchOnlineProxies () {
+    if (OnlineProxies.isLoading()) {
+      return;
+    }
+    if (onlineTesting) {
+      cancelOnlineTesting();
+    }
+    OnlineProxies.setLoading();
+    rebuildItems();
+    new Thread(() -> {
+      final OnlineProxies.FetchResult result = OnlineProxies.fetchSync();
+      UI.post(() -> {
+        if (isDestroyed() || adapter == null) {
+          return;
+        }
+        OnlineProxies.applyResult(result);
+        rebuildItems();
+        final int state = OnlineProxies.getState();
+        final CharSequence message;
+        if (state == OnlineProxies.STATE_READY) {
+          message = Lang.getString(R.string.OnlineProxyFetched, OnlineProxies.getEntries().size());
+        } else if (state == OnlineProxies.STATE_EMPTY) {
+          message = Lang.getString(R.string.OnlineProxyStatusEmpty);
+        } else {
+          message = Lang.getString(R.string.OnlineProxyStatusError, OnlineProxies.getError() != null ? OnlineProxies.getError() : "unknown");
+        }
+        UI.showToast(message, Toast.LENGTH_SHORT);
+      });
+    }, "online-proxy-fetch").start();
+  }
+
+  private void toggleOnlineTesting () {
+    if (onlineTesting) {
+      cancelOnlineTesting();
+      return;
+    }
+    final List<OnlineProxies.Entry> list = OnlineProxies.getEntries();
+    if (list.isEmpty()) {
+      UI.showToast(R.string.OnlineProxyNeedFetch, Toast.LENGTH_SHORT);
+      return;
+    }
+    onlineTesting = true;
+    onlineTestingDone = 0;
+    onlineTestingTotal = list.size();
+    // startPing 会同步把所有条目置为「检查中」，随后重建即可看到状态
+    onlinePingTask = OnlineProxies.startPing(list, OnlineProxies.DEFAULT_CONCURRENCY, OnlineProxies.DEFAULT_TIMEOUT_MS, () -> {
+      final OnlineProxies.PingTask task = onlinePingTask;
+      if (task == null) {
+        return;
+      }
+      onlineTestingDone = task.getProgress();
+      updateOnlineProgressRows();
+    }, () -> {
+      onlineTesting = false;
+      OnlineProxies.sortByPing(OnlineProxies.getEntries());
+      rebuildItems();
+      UI.showToast(Lang.getString(R.string.OnlineProxyStatusTested, OnlineProxies.getEntries().size()), Toast.LENGTH_SHORT);
+    });
+    rebuildItems();
+  }
+
+  private void cancelOnlineTesting () {
+    if (!onlineTesting) {
+      return;
+    }
+    onlineTesting = false;
+    OnlineProxies.cancelPing();
+    OnlineProxies.resetLoadingState(OnlineProxies.getEntries());
+    rebuildItems();
+    UI.showToast(R.string.OnlineProxyTestStop, Toast.LENGTH_SHORT);
+  }
+
+  private void updateOnlineProgressRows () {
+    if (adapter == null || isDestroyed()) {
+      return;
+    }
+    final int testIndex = adapter.indexOfViewById(R.id.btn_proxyTestOnline);
+    if (testIndex != -1) {
+      adapter.updateValuedSettingByPosition(testIndex);
+    }
+    final int statusIndex = adapter.indexOfViewById(R.id.btn_proxyOnlineStatus);
+    final ListItem statusItem = statusIndex != -1 ? adapter.getItem(statusIndex) : null;
+    if (statusItem != null && statusItem.setStringIfChanged(buildOnlineStatusText())) {
+      adapter.notifyItemChanged(statusIndex);
+    }
+  }
+
+  /** 已保存代理变化后，刷新在线代理行的「已添加到常用 / 当前生效」标记 */
+  private void updateOnlineRows () {
+    if (adapter == null || isDestroyed()) {
+      return;
+    }
+    final int start = adapter.indexOfViewById(R.id.btn_onlineProxy);
+    if (start == -1) {
+      return;
+    }
+    final int count = OnlineProxies.getEntries().size();
+    for (int i = 0; i < count; i++) {
+      adapter.updateValuedSettingByPosition(start + i * 2);
+    }
+  }
+
+  /** 应用（或仅添加到常用）在线代理，走与现有列表相同的 Settings 流程 */
+  private void applyOnlineProxy (@NonNull OnlineProxies.Entry entry, boolean setAsCurrent) {
+    Settings.instance().addOrUpdateProxy(entry.proxy, null, setAsCurrent);
+    UI.showToast(Lang.getString(setAsCurrent ? R.string.OnlineProxyApplied : R.string.OnlineProxyAddedToSaved, entry.getAddress()), Toast.LENGTH_SHORT);
+    updateOnlineRows();
+  }
+
+  private void showOnlineProxyOptions (@NonNull OnlineProxies.Entry entry) {
+    final boolean isSaved = findSavedProxy(entry) != null;
+    IntList ids = new IntList(6);
+    StringList strings = new StringList(6);
+    IntList colors = new IntList(6);
+    IntList icons = new IntList(6);
+
+    ids.append(R.id.btn_onlineProxyApply);
+    strings.append(R.string.OnlineProxyApply);
+    icons.append(R.drawable.baseline_check_24);
+    colors.append(OptionColor.NORMAL);
+
+    if (!isSaved) {
+      ids.append(R.id.btn_onlineProxyAddToSaved);
+      strings.append(R.string.OnlineProxyAddToSaved);
+      icons.append(R.drawable.baseline_add_24);
+      colors.append(OptionColor.NORMAL);
+    }
+
+    ids.append(R.id.btn_editProxy);
+    strings.append(R.string.ProxyEdit);
+    icons.append(R.drawable.baseline_edit_24);
+    colors.append(OptionColor.NORMAL);
+
+    ids.append(R.id.btn_share);
+    strings.append(R.string.Share);
+    icons.append(R.drawable.baseline_forward_24);
+    colors.append(OptionColor.NORMAL);
+
+    ids.append(R.id.btn_copyLink);
+    strings.append(R.string.CopyLink);
+    icons.append(R.drawable.baseline_link_24);
+    colors.append(OptionColor.NORMAL);
+
+    ids.append(R.id.btn_onlineProxyRemove);
+    strings.append(R.string.OnlineProxyRemoveFromList);
+    icons.append(R.drawable.baseline_delete_24);
+    colors.append(OptionColor.RED);
+
+    showOptions(Lang.getString(R.string.ProxyMtproto, entry.getAddress()), ids.get(), strings.get(), colors.get(), icons.get(), (itemView, id) -> {
+      if (id == R.id.btn_onlineProxyApply) {
+        applyOnlineProxy(entry, true);
+      } else if (id == R.id.btn_onlineProxyAddToSaved) {
+        applyOnlineProxy(entry, false);
+      } else if (id == R.id.btn_editProxy) {
+        // 在线代理不在常用列表里，用 id=NONE 的临时对象预填编辑器，保存时作为新条目写入
+        Settings.Proxy temp = new Settings.Proxy(Settings.PROXY_ID_NONE, entry.proxy, null);
+        EditProxyController c = new EditProxyController(context, tdlib);
+        c.setArguments(new EditProxyController.Args(temp));
+        navigateTo(c);
+      } else if (id == R.id.btn_share) {
+        tdlib.ui().shareProxyUrl(new TdlibContext(context, context.currentTdlib()), OnlineProxies.buildProxyLink(entry.proxy));
+      } else if (id == R.id.btn_copyLink) {
+        UI.copyText(OnlineProxies.buildProxyLink(entry.proxy), R.string.CopiedLink);
+      } else if (id == R.id.btn_onlineProxyRemove) {
+        if (OnlineProxies.removeEntry(entry)) {
+          rebuildItems();
+        }
+      }
+      return true;
+    });
+  }
+
+  // endregion
+
   private static ListItem[] newAutoSwitchItems () {
     return new ListItem[] {
       new ListItem(ListItem.TYPE_SHADOW_TOP),
@@ -436,31 +798,10 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
       }
     }
 
-    List<ListItem> items = new ArrayList<>();
-    items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_addProxy, 0, R.string.ProxyAdd)); // TODO design: icon
-    items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
-    items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.ProxyInfo));
-
     hasProxyAutoSwitchSettings = !proxies.isEmpty();
-    if (hasProxyAutoSwitchSettings) {
-      Collections.addAll(items, newAutoSwitchItems());
-    }
 
-    items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, R.string.ProxyConnections));
-    items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
-
-    items.add(new ListItem(ListItem.TYPE_VALUED_SETTING_COMPACT_WITH_RADIO, R.id.btn_noProxy, 0, R.string.ProxyNone));
-    pingProxy(noProxy, true);
-    for (Settings.Proxy proxy : proxies) {
-      items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
-      items.add(newProxyItem(proxy));
-      pingProxy(proxy, true);
-    }
-    items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
-
-    if (canUseForCalls) {
-      addProxyCallItems(items);
-    }
+    List<ListItem> items = new ArrayList<>();
+    buildItems(items);
 
     adapter = new SettingsAdapter(this) {
       @Override
@@ -486,12 +827,35 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
           radioView.setChecked(proxy.id == effectiveProxyId, isUpdate);
         } else if (itemId == R.id.btn_useProxyForCalls) {
           view.getToggler().setRadioEnabled(Settings.instance().checkProxySetting(Settings.PROXY_FLAG_USE_FOR_CALLS), isUpdate);
+        } else if (itemId == R.id.btn_proxyFetchOnline) {
+          view.setData(OnlineProxies.isLoading() ? Lang.getString(R.string.OnlineProxyStatusLoading) : null);
+        } else if (itemId == R.id.btn_proxyTestOnline) {
+          view.setName(Lang.getString(onlineTesting ? R.string.OnlineProxyTestStop : R.string.OnlineProxyTestAll));
+          view.setData(onlineTesting ? Lang.getString(R.string.OnlineProxyProgress, onlineTestingDone, onlineTestingTotal) : null);
+        } else if (itemId == R.id.btn_onlineProxy) {
+          OnlineProxies.Entry entry = (OnlineProxies.Entry) item.getData();
+          if (entry != null) {
+            view.setName(Lang.getString(R.string.ProxyMtproto, entry.getAddress()));
+            getOnlineState(entry, displayInfo);
+            view.setDataColorId(displayInfo.colorId);
+            view.setData(displayInfo.value);
+            final Settings.Proxy saved = findSavedProxy(entry);
+            final boolean isEffective = saved != null && saved.id == effectiveProxyId;
+            RadioView radioView = view.findRadioView();
+            radioView.setActive(isEffective, isUpdate);
+            radioView.setChecked(isEffective, isUpdate);
+          }
         }
       }
     };
     adapter.setOnLongClickListener(this);
     adapter.setItems(items, false);
     recyclerView.setAdapter(adapter);
+
+    pingProxy(noProxy, true);
+    for (Settings.Proxy proxy : proxies) {
+      pingProxy(proxy, true);
+    }
 
     touchHelper = RemoveHelper.attach(recyclerView, new RemoveHelper.ExtendedCallback() {
       @Override
@@ -586,6 +950,12 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
   @Override
   public void destroy () {
     super.destroy();
+    if (onlineTesting) {
+      onlineTesting = false;
+      OnlineProxies.cancelPing();
+      OnlineProxies.resetLoadingState(OnlineProxies.getEntries());
+    }
+    onlinePingTask = null;
     Settings.instance().removeProxyListener(this);
     tdlib.listeners().unsubscribeFromConnectivityUpdates(this);
     tdlib.context().global().removeProxyListener(this);
@@ -622,6 +992,20 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
       }
     } else if (viewId == R.id.btn_useProxyForCalls) {
       Settings.instance().setProxySetting(Settings.PROXY_FLAG_USE_FOR_CALLS, adapter.toggleView(v));
+    } else if (viewId == R.id.btn_proxyFetchOnline) {
+      fetchOnlineProxies();
+    } else if (viewId == R.id.btn_proxyTestOnline) {
+      toggleOnlineTesting();
+    } else if (viewId == R.id.btn_onlineProxy) {
+      OnlineProxies.Entry entry = (OnlineProxies.Entry) item.getData();
+      if (entry != null) {
+        Settings.Proxy saved = findSavedProxy(entry);
+        if (saved != null && saved.id == effectiveProxyId) {
+          showOnlineProxyOptions(entry);
+        } else {
+          applyOnlineProxy(entry, true);
+        }
+      }
     }
   }
 
@@ -653,6 +1037,13 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
           return false;
         }
       });
+      return true;
+    } else if (viewId == R.id.btn_onlineProxy) {
+      ListItem item = (ListItem) v.getTag();
+      OnlineProxies.Entry entry = (OnlineProxies.Entry) item.getData();
+      if (entry != null) {
+        showOnlineProxyOptions(entry);
+      }
       return true;
     }
     return false;
@@ -767,35 +1158,44 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
     }
   }
 
-  private int cellIndexToProxyIndex (int cellIndex) {
-    int headerItemCount = 7;
-    if (hasProxyAutoSwitchSettings) {
-      headerItemCount += 4;
+  /**
+   * 第一行「已保存代理」所在的下标（跳过「不使用代理」后那条分隔线）。
+   * 不能写死常量：上方「在线代理」区块的条数是动态的。
+   */
+  private int firstProxyCellIndex () {
+    if (adapter != null) {
+      int noProxyIndex = adapter.indexOfViewById(R.id.btn_noProxy);
+      if (noProxyIndex != -1) {
+        return noProxyIndex + 2;
+      }
     }
-    if (cellIndex < headerItemCount)
+    // 兜底：仅在 adapter 尚未建立、或该行暂时缺失时用到
+    return 5 + (hasProxyAutoSwitchSettings ? 4 : 0) + 2;
+  }
+
+  private int cellIndexToProxyIndex (int cellIndex) {
+    final int firstProxyCell = firstProxyCellIndex();
+    if (cellIndex < firstProxyCell)
       return -1;
-    cellIndex -= headerItemCount;
-    if (cellIndex > 0)
-      cellIndex /= 2;
-    if (cellIndex >= proxies.size() || cellIndex < 0)
+    final int proxyIndex = (cellIndex - firstProxyCell) / 2;
+    if (proxyIndex >= proxies.size() || proxyIndex < 0)
       return -1;
-    return cellIndex;
+    return proxyIndex;
   }
 
   private int indexOfProxyCellByProxyIndex (int proxyIndex, int proxyId) {
-    int headerItemCount = 7;
-    if (hasProxyAutoSwitchSettings) {
-      headerItemCount += 4;
-    }
-    int index = headerItemCount + proxyIndex * 2;
+    int index = firstProxyCellIndex() + proxyIndex * 2;
     if (proxyId != -1 && indexOfProxy(proxyId) != index)
-      throw new IllegalStateException("index: " + index + ", proxyIndex: " + indexOfProxy(proxyId));
+      throw new IllegalStateException("index: " + index + ", proxyIndex: " + proxyIndex);
     return index;
   }
 
   private int indexOfProxy (int proxyId) {
+    if (adapter == null) {
+      return -1;
+    }
     if (proxyId == Settings.PROXY_ID_NONE) {
-      return 5 + (hasProxyAutoSwitchSettings ? 4 : 0); // adapter.indexOfViewById(R.id.btn_noProxy);
+      return adapter.indexOfViewById(R.id.btn_noProxy);
     } else {
       return adapter.indexOfViewByLongId(proxyId);
     }
@@ -832,6 +1232,7 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
       adapter.updateValuedSettingByPosition(newIndex);
     }
     setCanUseForCalls(proxy != null && Settings.Proxy.canUseForCalls(proxy.type));
+    updateOnlineRows();
   }
 
   private Settings.Proxy findProxyById (int proxyId) {
@@ -876,5 +1277,6 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
 
       checkAutoSwitchItems();
     }
+    updateOnlineRows();
   }
 }
