@@ -6058,7 +6058,7 @@ public class MessagesController extends ViewController<MessagesController.Argume
   }
 
   public boolean showActionBotButton (String argument) {
-    if (tdlib.isBotChat(chat)) {
+    if (chat != null && tdlib.isBotChat(chat)) {
       this.botStartArgument = argument;
       showActionButton(R.string.BotStart, ACTION_BOT_START);
       return true;
@@ -6085,7 +6085,7 @@ public class MessagesController extends ViewController<MessagesController.Argume
 
   public void showActionUnblockButton () {
     long userId = tdlib.chatUserId(chat);
-    if (!tdlib.isRepliesChat(chat.id) && tdlib.isBotChat(chat)) {
+    if (chat != null && !tdlib.isRepliesChat(chat.id) && tdlib.isBotChat(chat)) {
       showActionButton(R.string.RestartBot, ACTION_BOT_START);
     } else {
       showActionButton(R.string.Unblock, ACTION_UNBAN_USER);

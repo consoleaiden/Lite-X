@@ -249,6 +249,23 @@
 - **顺带加固**：`MessagesController` 中新增的敏感词分支改为 `getChat() != null` 才 `reloadData()`，避免任何「chat 还没就绪就 kick loader」的可能。
 - `version.app=1845`（versionCode 1845000）。
 
+### 24. 空 chat 崩溃修复（1846）
+- **现象**：1844 上偶发崩溃 `Attempt to read from field 'TdApi$Chat org.drinkless.tdlib.TdApi$Chat.type' on a null object reference`。
+- **还原过程**：用 1845 保留下来的 R8 mapping 把混淆栈反查回真实符号：
+  ```
+  MessagesLoader.lambda$processMessages$3        (jm3.run)
+    MessagesManager.onTopEndLoaded()             (fn3.Y)
+      MessagesManager.checkBotStart()            (fn3.h，第 1706 行 controller.showActionBotButton();)
+        MessagesController.showActionBotButton(String)（R8 内联）
+          Tdlib.isBotChat(Chat)                  (zt5.l2)
+            Tdlib.chatUserId(Chat)  ← NPE        (zt5.F0)
+  ```
+- **根因**：`MessagesController.chat` 声明为 `@Nullable`（`getChatId()`、`setArguments()` 都写了 `chat != null ? … : 0` 的兜底，说明为空是上游认可的合法状态；聊天可能还没被 tdlib 解析出来就已开始加载消息）。但 `showActionBotButton()` / `showActionUnblockButton()` 里直接 `tdlib.isBotChat(chat)`、`chat.id` 裸解引用 ⇒ 消息加载完成的回调一到就崩。这属于上游既有缺陷，我们的搏一版本触发路径更频繁而已。
+- **修法**（+8/−2，全部收在空值收敛点）：
+  - `Tdlib.chatUserId(Chat)`：`chat == null` 直接 return 0 —— 它是全仓 `chat.type` 读取的唯一汇聚口，`isBotChat()`、`chatUser()` 等所有调用方一并免疫。
+  - `MessagesController.showActionBotButton/showActionUnblockButton`：显式 `chat != null &&` 守卫。
+- `version.app=1846`（versionCode 1846000）。
+
 
 ---
 

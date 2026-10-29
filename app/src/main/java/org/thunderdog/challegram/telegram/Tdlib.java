@@ -3284,6 +3284,12 @@ public class Tdlib implements TdlibProvider, Settings.SettingsChangeListener, Da
   }
 
   public long chatUserId (TdApi.Chat chat) {
+    // Lite-X: chat may legitimately be null (e.g. a chat opened before it was
+    // resolved). Reading chat.type on such instance crashes the whole app, so
+    // treat it as "no user".
+    if (chat == null) {
+      return 0;
+    }
     switch (chat.type.getConstructor()) {
       case TdApi.ChatTypePrivate.CONSTRUCTOR:
         return ((TdApi.ChatTypePrivate) chat.type).userId;
