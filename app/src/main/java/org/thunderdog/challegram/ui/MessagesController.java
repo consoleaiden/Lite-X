@@ -219,6 +219,7 @@ import org.thunderdog.challegram.tool.UI;
 import org.thunderdog.challegram.tool.Views;
 import org.thunderdog.challegram.ui.camera.CameraAccessImageView;
 import org.thunderdog.challegram.unsorted.ContentFilter;
+import org.thunderdog.challegram.unsorted.SensitiveWords;
 import org.thunderdog.challegram.unsorted.Settings;
 import org.thunderdog.challegram.unsorted.Test;
 import org.thunderdog.challegram.util.CancellableResultHandler;
@@ -4271,15 +4272,25 @@ public class MessagesController extends ViewController<MessagesController.Argume
   // == Content filter ==
 
   private int contentFilterVersion = ContentFilter.version();
+  private int sensitiveWordsVersion = SensitiveWords.version();
 
   /**
    * The filter can be reconfigured from its settings screen; when that happens
    * the messages have to be rebuilt so hidden / collapsed messages reflect it.
+   * Sensitive words are resolved while the text is rendered, so the list simply
+   * has to be rebuilt for the new words (or their removal) to take effect.
    */
   private void checkContentFilterChanges () {
     int version = ContentFilter.version();
     if (contentFilterVersion != version) {
       contentFilterVersion = version;
+      reloadData();
+      sensitiveWordsVersion = SensitiveWords.version();
+      return;
+    }
+    int wordsVersion = SensitiveWords.version();
+    if (sensitiveWordsVersion != wordsVersion) {
+      sensitiveWordsVersion = wordsVersion;
       reloadData();
     }
   }

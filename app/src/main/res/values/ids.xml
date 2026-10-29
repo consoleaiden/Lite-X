@@ -1459,6 +1459,13 @@
   <item type="id" name="btn_cfModuleFilter" />
   <item type="id" name="btn_contentFilterToggleAdUrls" />
   <item type="id" name="btn_contentFilterToggleRules" />
+  <item type="id" name="btn_cfModuleWords" />
+  <item type="id" name="btn_sensitiveWordsEnabled" />
+  <item type="id" name="btn_sensitiveWordsEditWord" />
+  <item type="id" name="btn_sensitiveWordsRemoveWord" />
+  <item type="id" name="btn_sensitiveWordsAddWord" />
+  <item type="id" name="btn_sensitiveWordsImportWords" />
+  <item type="id" name="btn_sensitiveWordsToggleWords" />
   <item type="id" name="btn_blockAd" />
   <item type="id" name="btn_proxyTest" />
 

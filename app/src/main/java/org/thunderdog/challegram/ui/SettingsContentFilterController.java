@@ -26,6 +26,7 @@ import org.thunderdog.challegram.theme.Theme;
 import org.thunderdog.challegram.tool.Screen;
 import org.thunderdog.challegram.tool.UI;
 import org.thunderdog.challegram.unsorted.ContentFilter;
+import org.thunderdog.challegram.unsorted.SensitiveWords;
 import org.thunderdog.challegram.v.CustomRecyclerView;
 
 import java.util.ArrayList;
@@ -42,6 +43,7 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
   private static final int MODULE_NO_IMAGES = 1;
   private static final int MODULE_ADS = 2;
   private static final int MODULE_FILTER = 3;
+  private static final int MODULE_WORDS = 4;
 
   public SettingsContentFilterController (Context context, Tdlib tdlib) {
     super(context, tdlib);
@@ -62,7 +64,7 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
   /** Currently expanded accordion module (only one at a time). */
   private int expandedModule = MODULE_NONE;
 
-  private boolean adUrlsExpanded, rulesExpanded;
+  private boolean adUrlsExpanded, rulesExpanded, wordsExpanded;
 
   /** Snapshot of the last applied item list, used for diff-based smooth updates. */
   private final List<ListItem> lastItems = new ArrayList<>();
@@ -83,6 +85,8 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
           view.getToggler().setRadioEnabled(ContentFilter.getMode() == ContentFilter.MODE_HIDE, isUpdate);
         } else if (id == R.id.btn_contentFilterModeCollapse) {
           view.getToggler().setRadioEnabled(ContentFilter.getMode() == ContentFilter.MODE_COLLAPSE, isUpdate);
+        } else if (id == R.id.btn_sensitiveWordsEnabled) {
+          view.getToggler().setRadioEnabled(SensitiveWords.isEnabled(), isUpdate);
         }
       }
     };
@@ -177,6 +181,43 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
       items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
     }
 
+    // == Module: sensitive words ==
+
+    addModuleHeader(items, MODULE_WORDS, R.id.btn_cfModuleWords, R.string.SensitiveWordsSection);
+    if (expandedModule == MODULE_WORDS) {
+      items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
+      items.add(new ListItem(ListItem.TYPE_RADIO_SETTING, R.id.btn_sensitiveWordsEnabled, 0, R.string.SensitiveWordsEnabled));
+      items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
+      items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.SensitiveWordsEnabledInfo));
+
+      List<String> words = SensitiveWords.getWords();
+      if (words.isEmpty()) {
+        items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
+        items.add(new ListItem(ListItem.TYPE_DESCRIPTION, 0, 0, R.string.SensitiveWordsEmpty));
+        items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
+      } else {
+        items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, Lang.getStringBold(R.string.SensitiveWords, words.size())));
+        int visible = wordsExpanded ? words.size() : Math.min(COLLAPSED_LIMIT, words.size());
+        items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
+        for (int i = 0; i < visible; i++) {
+          if (i > 0) {
+            items.add(new ListItem(ListItem.TYPE_SEPARATOR));
+          }
+          items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_sensitiveWordsEditWord, 0, words.get(i)).setData(i));
+        }
+        items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
+        if (words.size() > COLLAPSED_LIMIT) {
+          addExpandRow(items, R.id.btn_sensitiveWordsToggleWords, wordsExpanded, words.size());
+        }
+      }
+
+      items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
+      items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_sensitiveWordsAddWord, R.drawable.baseline_add_24, R.string.SensitiveWordsAdd));
+      items.add(new ListItem(ListItem.TYPE_SEPARATOR));
+      items.add(new ListItem(ListItem.TYPE_SETTING, R.id.btn_sensitiveWordsImportWords, R.drawable.baseline_add_24, R.string.SensitiveWordsImport));
+      items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
+    }
+
     applyItems(items);
   }
 
@@ -264,10 +305,12 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
   @Override
   public void onClick (View v) {
     @IdRes int id = v.getId();
-    if (id == R.id.btn_cfModuleNoImages || id == R.id.btn_cfModuleAds || id == R.id.btn_cfModuleFilter) {
+    if (id == R.id.btn_cfModuleNoImages || id == R.id.btn_cfModuleAds || id == R.id.btn_cfModuleFilter || id == R.id.btn_cfModuleWords) {
       // Accordion: opening a module closes the previously opened one
-      int module = id == R.id.btn_cfModuleNoImages ? MODULE_NO_IMAGES :
-        id == R.id.btn_cfModuleAds ? MODULE_ADS : MODULE_FILTER;
+      int module =
+        id == R.id.btn_cfModuleNoImages ? MODULE_NO_IMAGES :
+        id == R.id.btn_cfModuleAds ? MODULE_ADS :
+        id == R.id.btn_cfModuleFilter ? MODULE_FILTER : MODULE_WORDS;
       expandedModule = expandedModule == module ? MODULE_NONE : module;
       if (expandedModule != MODULE_ADS) {
         adUrlsExpanded = false;
@@ -275,7 +318,24 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
       if (expandedModule != MODULE_FILTER) {
         rulesExpanded = false;
       }
+      if (expandedModule != MODULE_WORDS) {
+        wordsExpanded = false;
+      }
       rebuildPreservingScroll();
+    } else if (id == R.id.btn_sensitiveWordsToggleWords) {
+      wordsExpanded = !wordsExpanded;
+      rebuildPreservingScroll();
+    } else if (id == R.id.btn_sensitiveWordsEnabled) {
+      SensitiveWords.setEnabled(adapter.toggleView(v));
+    } else if (id == R.id.btn_sensitiveWordsEditWord) {
+      Object data = ((ListItem) v.getTag()).getData();
+      if (data instanceof Integer) {
+        showWordMenu((Integer) data);
+      }
+    } else if (id == R.id.btn_sensitiveWordsAddWord) {
+      showAddWordInput();
+    } else if (id == R.id.btn_sensitiveWordsImportWords) {
+      showImportWordsInput();
     } else if (id == R.id.btn_contentFilterToggleAdUrls) {
       adUrlsExpanded = !adUrlsExpanded;
       rebuildPreservingScroll();
@@ -427,6 +487,119 @@ public class SettingsContentFilterController extends RecyclerViewController<Void
     }
     openAlert(R.string.ContentFilterRemoveRule, ruleTitle(rules.get(index)) + "\n\n" + Lang.getString(R.string.ContentFilterRemoveConfirm), (dialog, which) -> {
       ContentFilter.removeRuleAt(index);
+      rebuildPreservingScroll();
+    });
+  }
+
+  // == Sensitive words ==
+
+  private void showWordMenu (final int index) {
+    List<String> words = SensitiveWords.getWords();
+    if (index < 0 || index >= words.size()) {
+      return;
+    }
+    showOptions(words.get(index), new int[] {R.id.btn_sensitiveWordsEditWord, R.id.btn_sensitiveWordsRemoveWord}, new String[] {
+      Lang.getString(R.string.SensitiveWordsEdit),
+      Lang.getString(R.string.SensitiveWordsRemove)
+    }, null, new int[] {R.drawable.baseline_edit_24, R.drawable.baseline_delete_24}, (itemView, optionId) -> {
+      if (optionId == R.id.btn_sensitiveWordsEditWord) {
+        showEditWordInput(index);
+      } else if (optionId == R.id.btn_sensitiveWordsRemoveWord) {
+        confirmRemoveWord(index);
+      }
+      return true;
+    });
+  }
+
+  private void showAddWordInput () {
+    final EditText input = new EditText(context);
+    input.setSingleLine(true);
+    input.setHint(Lang.getString(R.string.SensitiveWordsAddHint));
+    buildInputAlert(input, R.string.SensitiveWordsAdd, (dialog, which) -> {
+      String text = input.getText() != null ? input.getText().toString().trim() : "";
+      if (text.isEmpty()) {
+        UI.showToast(R.string.SensitiveWordsEmptyInput, Toast.LENGTH_SHORT);
+        return;
+      }
+      List<String> words = SensitiveWords.getWords();
+      if (words.contains(text)) {
+        UI.showToast(R.string.SensitiveWordsDuplicate, Toast.LENGTH_SHORT);
+        return;
+      }
+      SensitiveWords.addWord(text);
+      rebuildPreservingScroll();
+      UI.showToast(Lang.getString(R.string.SensitiveWordsAdded, text), Toast.LENGTH_SHORT);
+    });
+  }
+
+  private void showEditWordInput (final int index) {
+    List<String> words = SensitiveWords.getWords();
+    if (index < 0 || index >= words.size()) {
+      return;
+    }
+    final String currentWord = words.get(index);
+    final EditText input = new EditText(context);
+    input.setSingleLine(true);
+    input.setText(currentWord);
+    input.setSelection(input.getText() != null ? input.getText().length() : 0);
+    input.setHint(Lang.getString(R.string.SensitiveWordsAddHint));
+    buildInputAlert(input, R.string.SensitiveWordsEdit, (dialog, which) -> {
+      String text = input.getText() != null ? input.getText().toString().trim() : "";
+      if (text.isEmpty()) {
+        UI.showToast(R.string.SensitiveWordsEmptyInput, Toast.LENGTH_SHORT);
+        return;
+      }
+      if (text.equals(currentWord)) {
+        return;
+      }
+      SensitiveWords.updateWord(index, text);
+      rebuildPreservingScroll();
+    });
+  }
+
+  private void showImportWordsInput () {
+    final EditText input = new EditText(context);
+    input.setSingleLine(false);
+    input.setMinLines(4);
+    input.setHint(Lang.getString(R.string.SensitiveWordsImportHint));
+    buildInputAlert(input, R.string.SensitiveWordsImport, (dialog, which) -> {
+      String text = input.getText() != null ? input.getText().toString() : "";
+      if (text.trim().isEmpty()) {
+        UI.showToast(R.string.SensitiveWordsEmptyInput, Toast.LENGTH_SHORT);
+        return;
+      }
+      int added = SensitiveWords.importWords(text);
+      if (added == 0) {
+        UI.showToast(R.string.SensitiveWordsDuplicate, Toast.LENGTH_SHORT);
+        return;
+      }
+      wordsExpanded = false;
+      rebuildPreservingScroll();
+      UI.showToast(Lang.getString(R.string.SensitiveWordsImported, added), Toast.LENGTH_SHORT);
+    });
+  }
+
+  private void buildInputAlert (EditText input, int titleRes, android.content.DialogInterface.OnClickListener onDone) {
+    LinearLayout container = new LinearLayout(context);
+    int padding = Screen.dp(20f);
+    container.setPadding(padding, padding / 2, padding, 0);
+    container.addView(input);
+
+    AlertDialog.Builder b = new AlertDialog.Builder(context, Theme.dialogTheme());
+    b.setTitle(Lang.getString(titleRes));
+    b.setView(container);
+    b.setPositiveButton(Lang.getString(R.string.Done), onDone);
+    b.setNegativeButton(Lang.getString(R.string.Cancel), (dialog, which) -> dialog.dismiss());
+    showAlert(b);
+  }
+
+  private void confirmRemoveWord (final int index) {
+    List<String> words = SensitiveWords.getWords();
+    if (index < 0 || index >= words.size()) {
+      return;
+    }
+    openAlert(R.string.SensitiveWordsRemove, words.get(index) + "\n\n" + Lang.getString(R.string.SensitiveWordsRemoveConfirm), (dialog, which) -> {
+      SensitiveWords.removeWordAt(index);
       rebuildPreservingScroll();
     });
   }

@@ -61,6 +61,24 @@
   <string name="AdFilterListNote">提示：聊天列表中的广告在重新进入聊天列表后生效。</string>
   <string name="AdFilteredPlaceholder">广告链接已屏蔽</string>
 
+  <!-- Sensitive words (custom feature) -->
+  <string name="SensitiveWordsSection">敏感词</string>
+  <string name="SensitiveWordsEnabled">启用敏感词过滤</string>
+  <string name="SensitiveWordsEnabledInfo">开启后，频道列表、聊天名称、用户名称与消息内容等界面文字中出现的敏感词会以等长的 * 号显示，原文不会被展示；关闭后立即恢复原文。</string>
+  <string name="SensitiveWords">敏感词库</string>
+  <string name="SensitiveWordsEmpty">还没有添加任何敏感词。</string>
+  <string name="SensitiveWordsAdd">添加敏感词</string>
+  <string name="SensitiveWordsImport">批量导入</string>
+  <string name="SensitiveWordsEdit">编辑敏感词</string>
+  <string name="SensitiveWordsRemove">删除敏感词</string>
+  <string name="SensitiveWordsRemoveConfirm">删除后该词条将不再被过滤。</string>
+  <string name="SensitiveWordsAddHint">输入敏感词，例如：赌博</string>
+  <string name="SensitiveWordsImportHint">每行一个，或用逗号 / 空格分隔，支持一次导入多个</string>
+  <string name="SensitiveWordsAdded">已添加敏感词：%1$s</string>
+  <string name="SensitiveWordsImported">已导入 %1$d 个敏感词</string>
+  <string name="SensitiveWordsDuplicate">该敏感词已存在</string>
+  <string name="SensitiveWordsEmptyInput">请先输入敏感词</string>
+
   <string name="ProxyTestSpeed">测速</string>
   <string name="ProxyTesting">正在测速，请稍候…</string>
   <string name="ProxyTestResult">测速完成：%1$s ms</string>

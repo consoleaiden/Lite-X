@@ -230,6 +230,17 @@
 - **即时生效**：开关都写 `ContentFilter` 并 `bumpVersion()`；`MessagesController` / `ChatsController` 已有的 version 比对（onActivityResume / onFocusStateChanged）会让聊天窗口与列表在返回时立即重建，无需重启。
 - `version.app=1840`（versionCode 1840000）。
 
+### 22. 敏感词屏蔽（1844）
+- **设置入口**：内容过滤设置页新增「敏感词」手风琴模块（与无图模式/屏蔽广告/内容过滤同一套 UI 样式）：总开关 + 敏感词库列表（默认前 3 条 + 展开/收起）+ 添加（单个）+ 批量导入（支持换行/逗号/空格分隔）+ 编辑 + 删除（带确认）。
+- **渲染层统一收敛**：`util/text/Text.java` 的 `Text.Builder(String in, …)` 是本工程**所有自绘文本的唯一入口**（`Text` 只有私有构造、无子类），聊天列表标题/预览、聊天窗口标题、消息正文、caption、作者名等全部经过它，因此只需在这一处调用 `SensitiveWords.filter(in)` 即可做到「不漏改」；设置页本身走 `SettingView` + Canvas 绘制、不经过 `Text`，所以词条管理界面显示原文，不影响维护。
+- **等长替换**：命中词被替换成**相同数量**的 `*`，长度不变 ⇒ `TextEntity` 的 offset、选区、链接热区保持有效，不会错位。
+- **匹配实现**（`unsorted/SensitiveWords.java`）：
+  - Aho-Corasick 自动机，词库一次编译多次复用，扫描复杂度 O(文本长度)，与词条数量无关；词库变更时自动失效重建；
+  - 归一化按字符 1:1 映射（全角 ASCII `！`~`～` → 半角、全角空格 → 空格、`toLowerCase` 字符级），因此索引能对回原文，同时覆盖大小写与全半角变体；
+  - 关闭总开关或词库为空时 `filter()` 直接返回原字符串实例，零分配零开销。
+- **即时生效**：所有变更 `bumpVersion()`；`MessagesController` / `ChatsController` 在原有 `checkContentFilterChanges()` 里并行比对 `SensitiveWords.version()`，返回聊天窗口/聊天列表时即触发重建，开关关闭立即恢复原文。
+- `version.app=1844`（versionCode 1844000）。
+
 
 ---
 

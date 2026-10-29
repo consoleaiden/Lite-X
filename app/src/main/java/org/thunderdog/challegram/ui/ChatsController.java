@@ -102,6 +102,7 @@ import org.thunderdog.challegram.tool.Strings;
 import org.thunderdog.challegram.tool.UI;
 import org.thunderdog.challegram.tool.Views;
 import org.thunderdog.challegram.unsorted.ContentFilter;
+import org.thunderdog.challegram.unsorted.SensitiveWords;
 import org.thunderdog.challegram.unsorted.Settings;
 import org.thunderdog.challegram.unsorted.Test;
 import org.thunderdog.challegram.util.Poller;
@@ -2393,12 +2394,20 @@ public class ChatsController extends TelegramViewController<ChatsController.Argu
   // == Content filter ==
 
   private int contentFilterVersion = ContentFilter.version();
+  private int sensitiveWordsVersion = SensitiveWords.version();
 
-  /** Rebuilds chat list previews when the content filter has been reconfigured. */
+  /**
+   * Rebuilds chat list previews when the content filter has been reconfigured,
+   * or when the sensitive word list changed (titles and message previews are
+   * rendered through {@link org.thunderdog.challegram.util.text.Text}, which is
+   * where masking takes place).
+   */
   private void checkContentFilterChanges () {
     int version = ContentFilter.version();
-    if (contentFilterVersion != version) {
+    int wordsVersion = SensitiveWords.version();
+    if (contentFilterVersion != version || sensitiveWordsVersion != wordsVersion) {
       contentFilterVersion = version;
+      sensitiveWordsVersion = wordsVersion;
       if (adapter != null) {
         adapter.updateLocale(true);
         adapter.notifyAllChanged();

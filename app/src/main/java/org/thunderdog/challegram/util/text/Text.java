@@ -62,6 +62,7 @@ import org.thunderdog.challegram.tool.Screen;
 import org.thunderdog.challegram.tool.Strings;
 import org.thunderdog.challegram.tool.UI;
 import org.thunderdog.challegram.tool.Views;
+import org.thunderdog.challegram.unsorted.SensitiveWords;
 import org.thunderdog.challegram.unsorted.Settings;
 import org.thunderdog.challegram.util.EmojiStatusHelper;
 import org.thunderdog.challegram.util.text.bidi.BiDiEntity;
@@ -378,7 +379,9 @@ public class Text implements Runnable, Emoji.CountLimiter, CounterTextPart, List
       //noinspection ConstantConditions
       if (theme == null)
         throw new IllegalStateException();
-      this.in = in;
+      // Lite-X custom: every user-facing string rendered through Text passes
+      // here, so this is the single point where sensitive words get masked.
+      this.in = SensitiveWords.filter(in);
       this.maxWidth = maxWidth;
       this.provider = provider;
       this.theme = theme;
