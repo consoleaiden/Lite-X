@@ -1197,6 +1197,10 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
         checkAutoSwitchItems();
       }
     }
+    // 单条删除后同步「不可用」统计与优质代理行的生效标记
+    updateCleanupRow();
+    updateOnlineRows();
+    updateBestRows();
   }
 
   @Override
@@ -1506,6 +1510,7 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
     }
     setCanUseForCalls(proxy != null && Settings.Proxy.canUseForCalls(proxy.type));
     updateOnlineRows();
+    updateBestRows();
   }
 
   private Settings.Proxy findProxyById (int proxyId) {
@@ -1551,5 +1556,6 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
       checkAutoSwitchItems();
     }
     updateOnlineRows();
+    updateBestRows();
   }
 }
