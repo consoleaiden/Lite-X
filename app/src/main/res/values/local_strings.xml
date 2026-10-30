@@ -167,11 +167,13 @@
 
   <!-- Online proxies (custom feature, not part of the upstream app) -->
   <string name="OnlineProxyTitle">在线代理</string>
-  <string name="OnlineProxyFetch">拉取代理</string>
+  <string name="OnlineProxyFetch">拉取 top100</string>
+  <string name="OnlineProxyFetchAll">拉取全部代理</string>
+  <string name="OnlineProxyLoadingShort">正在拉取…</string>
   <string name="OnlineProxyTestAll">全部测试</string>
   <string name="OnlineProxyTestStop">中断测试</string>
   <string name="OnlineProxyProgress">%1$s/%2$s</string>
-  <string name="OnlineProxyStatusIdle">从 GitHub 拉取 top100 代理列表后显示在这里，可批量测试并从快到慢排序。该列表每次拉取都会覆盖，喜欢的代理请添加到常用。</string>
+  <string name="OnlineProxyStatusIdle">可拉取 top100 精选列表，或拉取包含更多节点（约 1000 条）的全量列表；拉取后可批量测试并按速度排序。列表每次拉取都会覆盖，喜欢的代理请添加到常用。</string>
   <string name="OnlineProxyStatusLoading">正在拉取代理列表…</string>
   <string name="OnlineProxyStatusReady">已拉取 %1$s 条 · 数据时间 %2$s</string>
   <string name="OnlineProxyStatusReadyNoDate">已拉取 %1$s 条</string>
@@ -188,5 +190,20 @@
   <string name="OnlineProxyApply">应用此代理</string>
   <string name="OnlineProxyAddToSaved">添加到常用</string>
   <string name="OnlineProxyRemoveFromList">从在线列表移除</string>
-  <string name="OnlineProxyNeedFetch">请先点击「拉取代理」获取列表</string>
+  <string name="OnlineProxyNeedFetch">请先点击「拉取 top100」或「拉取全部代理」获取列表</string>
+  <string name="OnlineProxyStatusTestedBest">已按本机速度排序，共 %1$s 条；其中最快的 %2$s 条已存入「优质代理」，重启后仍可使用</string>
+  <string name="OnlineProxyStatusTestedNoBest">已按本机速度排序，共 %1$s 条；本次没有连通的代理，已保留上一批优质代理</string>
+
+  <!-- Best (persisted) proxies: fastest ones kept after each full test -->
+  <string name="BestProxyTitle">优质代理</string>
+  <string name="BestProxyStatus">上次测速后保留的 %1$s 条最快代理 · 保存于 %2$s</string>
+  <string name="BestProxyStatusNoDate">上次测速后保留的 %1$s 条最快代理</string>
+  <string name="BestProxyRemove">从优质列表移除</string>
+
+  <!-- Batch cleanup of unreachable saved proxies -->
+  <string name="ProxyCleanupInvalid">删除无效代理</string>
+  <string name="ProxyCleanupCount">%1$s 条不可用</string>
+  <string name="ProxyCleanupConfirm">将删除 %1$s 条测试失败或不可连接的代理（含其延迟数据）。此操作不可撤销。</string>
+  <string name="ProxyCleanupDone">已删除 %1$s 条无效代理</string>
+  <string name="ProxyCleanupNone">当前列表中没有检测到无效代理</string>
 </resources>

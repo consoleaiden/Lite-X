@@ -276,6 +276,14 @@
 - **长按菜单**：`应用此代理` / `添加到常用`（已在常用列表时不显示）/ `编辑代理`（用 `id=PROXY_ID_NONE` 的临时对象预填编辑器，保存即新增，不会覆盖已有条目）/ `分享` / `复制链接`（自行拼 `t.me/proxy` 链接，避免 TDLib 往返）/ `从在线列表移除`。
 - `version.app=1847`（versionCode 1847000）。
 
+### 26. 代理页增强：优质代理持久化 / 一键删无效 / 双数据源（1848）
+- **双数据源**：`拉取代理` 更名为 `拉取 top100`，并新增 `拉取全部代理`（`proxies.json`，约 994 条），两者共用同一套解析、测速、排序、优选与展示逻辑。每个源都有 `raw.githubusercontent.com` → `cdn.jsdelivr.net` → `fastly.jsdelivr.net` 三级兜底。
+  - **格式差异（关键坑）**：`top100.json` 的 `proxies` 是**对象数组**（含 `rank`）；`proxies.json` 的 `proxies` 是**行式数组**，列含义由顶层 `fields` 描述（`server, port, secret, sources, alive, verified, latency_ms, connect_ms, tls_ms, success_rate, error`），且**没有 rank**。解析器按行类型分流：对象行按字段名读、数组行按 `fields` 解析出的列下标读（找不到字段时回退到已知默认下标）。无 `rank` 的源以源站实测 `latency_ms` 升序作为初始顺序。
+- **优质代理持久化**：每次「全部测试」完成后，把**测试通过**（`pingMs >= 0`）的条目按本机延迟升序取前 20 条，连同地址、端口、secret、延迟、测试时间一起序列化为 JSON，写入 `Settings` 的 LevelDB key-value（键 `online_best_proxies`），重启后仍在。界面上作为独立「优质代理」区块（在「在线代理」与「代理连接」之间）展示，可直接点击应用 / 长按走菜单（应用、添加到常用、复制链接、从优质列表移除）。
+  - **替换策略**：只有「本次测试存在连通代理」时才整体覆盖；本次测试全部失败则不写盘、旧数据原样保留（`saveBestFrom` 返回 0 即代表走保留分支）。单纯拉取不会清空该区块。
+- **一键删除无效代理**：在「代理连接」区块顶部新增按钮行，右侧实时显示「N 条不可用」（统计 `pingMs == PROXY_TIME_EMPTY` 的已保存代理，每完成一次 `pingProxy` 回调就刷新）。点击后先确认（显示将删除的条数），逐条 `Settings.removeProxy`；正在使用的代理先 `disableProxy()` 再删（与单条删除一致）。每删一条都用 `indexOfProxy(id)` 重新定位，避免批量删除导致下标漂移；完成后 toast 显示实际删除数量，并刷新列表、`checkAutoSwitchItems()` 与两处标记行。
+- `version.app=1848`（versionCode 1848000）。
+
 
 ---
 

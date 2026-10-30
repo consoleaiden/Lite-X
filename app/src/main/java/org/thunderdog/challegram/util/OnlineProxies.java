@@ -62,17 +62,31 @@ import me.vkryl.core.StringUtils;
 public final class OnlineProxies {
   private OnlineProxies () { }
 
-  public static final String SOURCE_URL =
+/** top100 精选列表：对象数组，含 rank，条数少但质量高。 */
+  public static final int SOURCE_TOP = 0;
+  /** 全量列表：行式数组（列由顶层 fields 描述），约 1000 条，用于 top100 中没有优质代理时兜底。 */
+  public static final int SOURCE_ALL = 1;
+
+  public static final String SOURCE_URL_TOP =
     "https://raw.githubusercontent.com/consoleaiden/telegram-mtproto-proxy-list/main/top100.json";
+  public static final String SOURCE_URL_ALL =
+    "https://raw.githubusercontent.com/consoleaiden/telegram-mtproto-proxy-list/main/proxies.json";
 
   /**
-   * 按顺序尝试的订阅源：raw.githubusercontent.com 在部分网络（尤其国内直连）下不可达，
+   * 每个数据源按顺序尝试的地址：raw.githubusercontent.com 在部分网络（尤其国内直连）下不可达，
    * 因此附带 jsDelivr 的 GitHub 镜像作为兜底，任意一个成功即停止。
    */
-  private static final String[] SOURCE_URLS = {
-    SOURCE_URL,
-    "https://cdn.jsdelivr.net/gh/consoleaiden/telegram-mtproto-proxy-list@main/top100.json",
-    "https://fastly.jsdelivr.net/gh/consoleaiden/telegram-mtproto-proxy-list@main/top100.json"
+  private static final String[][] SOURCE_URLS = {
+    {
+      SOURCE_URL_TOP,
+      "https://cdn.jsdelivr.net/gh/consoleaiden/telegram-mtproto-proxy-list@main/top100.json",
+      "https://fastly.jsdelivr.net/gh/consoleaiden/telegram-mtproto-proxy-list@main/top100.json"
+    },
+    {
+      SOURCE_URL_ALL,
+      "https://cdn.jsdelivr.net/gh/consoleaiden/telegram-mtproto-proxy-list@main/proxies.json",
+      "https://fastly.jsdelivr.net/gh/consoleaiden/telegram-mtproto-proxy-list@main/proxies.json"
+    }
   };
 
   public static final int STATE_IDLE = 0;
@@ -200,10 +214,19 @@ public final class OnlineProxies {
    * 同步拉取并解析。**必须在后台线程调用**，不修改任何共享状态。
    */
   public static @NonNull FetchResult fetchSync () {
+    return fetchSync(SOURCE_TOP);
+  }
+
+  /**
+   * 同步拉取并解析。**必须在后台线程调用**，不修改任何共享状态。
+   *
+   * @param source {@link #SOURCE_TOP} 拉 top100.json，{@link #SOURCE_ALL} 拉 proxies.json
+   */
+  public static @NonNull FetchResult fetchSync (int source) {
+    final String[] urls = source == SOURCE_ALL ? SOURCE_URLS[1] : SOURCE_URLS[0];
     String lastError = null;
-    for (int i = 0; i < SOURCE_URLS.length; i++) {
-      final String url = SOURCE_URLS[i];
-      final FetchResult result = fetchFrom(url);
+    for (int i = 0; i < urls.length; i++) {
+      final FetchResult result = fetchFrom(urls[i]);
       if (result.entries != null) {
         if (i > 0) {
           Log.i("Online proxy list fetched from mirror %d", i);
@@ -249,6 +272,13 @@ public final class OnlineProxies {
     }
   }
 
+  /**
+   * 兼容两种订阅文件格式：
+   * <ul>
+   *   <li>top100.json：{@code proxies} 是对象数组，字段按名字读取，带 rank</li>
+   *   <li>proxies.json：{@code proxies} 是行式数组，列的含义由顶层 {@code fields} 描述，没有 rank</li>
+   * </ul>
+   */
   private static @NonNull FetchResult parse (@NonNull String body) {
     final JSONObject root;
     final JSONArray array;
@@ -262,19 +292,50 @@ public final class OnlineProxies {
       return new FetchResult(null, null, 0, "格式异常：缺少 proxies 数组");
     }
 
+    // 行式数据的列索引（对象行不需要）；缺失的字段回退到已知默认顺序
+    final int serverColumn = columnIndex(root, "server", 0);
+    final int portColumn = columnIndex(root, "port", 1);
+    final int secretColumn = columnIndex(root, "secret", 2);
+    final int latencyColumn = columnIndex(root, "latency_ms", 6);
+
     final String generatedAt = root.optString("generated_at", null);
     final List<Entry> parsed = new ArrayList<>(array.length());
     final Set<String> keys = new HashSet<>(array.length());
     int skipped = 0;
+    boolean hasRank = false;
     for (int i = 0; i < array.length(); i++) {
-      JSONObject item = array.optJSONObject(i);
-      if (item == null) {
+      Object rawRow = array.opt(i);
+      final String server;
+      final int port;
+      final String secret;
+      final long serverLatency;
+      final int rank;
+      final String mode;
+      if (rawRow instanceof JSONObject) {
+        JSONObject item = (JSONObject) rawRow;
+        server = trimToEmpty(item.optString("server", ""));
+        port = item.optInt("port", 0);
+        secret = trimToEmpty(item.optString("secret", ""));
+        serverLatency = item.has("latency_ms") && !item.isNull("latency_ms")
+          ? Math.round(item.optDouble("latency_ms", -1d)) : -1;
+        rank = item.has("rank") ? item.optInt("rank", parsed.size() + 1) : parsed.size() + 1;
+        if (item.has("rank")) {
+          hasRank = true;
+        }
+        mode = item.optString("mode", null);
+      } else if (rawRow instanceof JSONArray) {
+        JSONArray row = (JSONArray) rawRow;
+        server = trimToEmpty(row.optString(serverColumn, ""));
+        port = row.optInt(portColumn, 0);
+        secret = trimToEmpty(row.optString(secretColumn, ""));
+        double latency = row.optDouble(latencyColumn, -1d);
+        serverLatency = !Double.isNaN(latency) ? Math.round(latency) : -1;
+        rank = parsed.size() + 1;
+        mode = null;
+      } else {
         skipped++;
         continue;
       }
-      final String server = trimToEmpty(item.optString("server", ""));
-      final int port = item.optInt("port", 0);
-      final String secret = trimToEmpty(item.optString("secret", ""));
       if (server.isEmpty() || port <= 0 || port > 65535 || secret.isEmpty()) {
         skipped++;
         continue;
@@ -284,14 +345,8 @@ public final class OnlineProxies {
         // 源数据内部重复
         continue;
       }
-      final long serverLatency;
-      if (item.has("latency_ms") && !item.isNull("latency_ms")) {
-        serverLatency = Math.round(item.optDouble("latency_ms", -1d));
-      } else {
-        serverLatency = -1;
-      }
       final TdApi.Proxy proxy = new TdApi.Proxy(server, port, new TdApi.ProxyTypeMtproto(secret));
-      parsed.add(new Entry(proxy, key, item.optInt("rank", parsed.size() + 1), serverLatency, item.optString("mode", null)));
+      parsed.add(new Entry(proxy, key, rank, serverLatency, mode));
     }
 
     if (parsed.isEmpty()) {
@@ -300,9 +355,31 @@ public final class OnlineProxies {
         "返回了 0 条代理（数据为空）";
       return new FetchResult(Collections.emptyList(), generatedAt, array.length(), reason);
     }
-    // 保留源站排名顺序，测速前按 rank 展示
-    Collections.sort(parsed, (a, b) -> Integer.compare(a.rank, b.rank));
+    if (hasRank) {
+      // 保留源站排名顺序，测速前按 rank 展示
+      Collections.sort(parsed, (a, b) -> Integer.compare(a.rank, b.rank));
+    } else {
+      // 没有 rank 的源（全量列表）按源站实测延迟展示，未知延迟垫底
+      Collections.sort(parsed, (a, b) -> {
+        final long la = a.serverLatencyMs >= 0 ? a.serverLatencyMs : Long.MAX_VALUE;
+        final long lb = b.serverLatencyMs >= 0 ? b.serverLatencyMs : Long.MAX_VALUE;
+        return la != lb ? Long.compare(la, lb) : Integer.compare(a.rank, b.rank);
+      });
+    }
     return new FetchResult(parsed, generatedAt, array.length(), null);
+  }
+
+  /** 从顶层 fields 描述里取某一列的下标，找不到时用兜底顺序，并容忍 columns 顺序变化。 */
+  private static int columnIndex (@NonNull JSONObject root, @NonNull String name, int fallbackIndex) {
+    JSONArray fields = root.optJSONArray("fields");
+    if (fields != null) {
+      for (int i = 0; i < fields.length(); i++) {
+        if (name.equals(fields.optString(i, null))) {
+          return i;
+        }
+      }
+    }
+    return fallbackIndex;
   }
 
   private static @NonNull String readAll (@NonNull InputStream inputStream) throws Exception {
@@ -501,4 +578,145 @@ public final class OnlineProxies {
     }
     return "https://t.me/proxy?server=" + proxy.server + "&port=" + proxy.port + "&secret=" + secret;
   }
+
+  // region 优质代理持久化
+
+  /** 每次「拉取 + 全部测试」后保留的最快代理条数上限。 */
+  public static final int BEST_LIMIT = 20;
+
+  private static final String KEY_BEST_PROXIES = "online_best_proxies";
+
+  /** 已持久化的优质代理：写入 Settings 的 key-value 存储（LevelDB），进程重启后仍可读。 */
+  private static final List<SavedEntry> bestEntries = new ArrayList<>();
+  private static long bestUpdatedAt;
+  private static boolean bestLoaded;
+
+  public static final class SavedEntry {
+    public final TdApi.Proxy proxy;
+    /** 本机测得的 TCP 握手延迟（毫秒） */
+    public final long pingMs;
+    /** 该次测试完成的时刻（System.currentTimeMillis） */
+    public final long testedAtMs;
+
+    SavedEntry (@NonNull TdApi.Proxy proxy, long pingMs, long testedAtMs) {
+      this.proxy = proxy;
+      this.pingMs = pingMs;
+      this.testedAtMs = testedAtMs;
+    }
+
+    public @NonNull String getAddress () {
+      return proxy.server + ":" + proxy.port;
+    }
+  }
+
+  public static @NonNull List<SavedEntry> getBestEntries () {
+    ensureBestLoaded();
+    return bestEntries;
+  }
+
+  public static long getBestUpdatedAt () {
+    ensureBestLoaded();
+    return bestUpdatedAt;
+  }
+
+  public static boolean removeBestEntry (@NonNull SavedEntry entry) {
+    ensureBestLoaded();
+    if (!bestEntries.remove(entry)) {
+      return false;
+    }
+    persistBest();
+    return true;
+  }
+
+  /**
+   * 从一次完整的测速结果里挑出最快的前 {@link #BEST_LIMIT} 条持久化。必须在主线程调用。
+   *
+   * @return 实际写入的条数；**返回 0 表示本次没有连通的代理，旧数据被完整保留**（不会被清空）
+   */
+  public static int saveBestFrom (@NonNull List<Entry> tested) {
+    ensureBestLoaded();
+    final List<Entry> alive = new ArrayList<>();
+    for (Entry entry : tested) {
+      if (entry.isAlive()) {
+        alive.add(entry);
+      }
+    }
+    if (alive.isEmpty()) {
+      return 0;
+    }
+    Collections.sort(alive, (a, b) -> Long.compare(a.pingMs, b.pingMs));
+    final int count = Math.min(BEST_LIMIT, alive.size());
+    final long now = System.currentTimeMillis();
+    final List<SavedEntry> next = new ArrayList<>(count);
+    for (int i = 0; i < count; i++) {
+      final Entry entry = alive.get(i);
+      next.add(new SavedEntry(entry.proxy, entry.pingMs, now));
+    }
+    // 整体替换：只有走到这里（本次有有效结果）才覆盖上一批
+    bestEntries.clear();
+    bestEntries.addAll(next);
+    bestUpdatedAt = now;
+    persistBest();
+    return count;
+  }
+
+  private static void persistBest () {
+    try {
+      final JSONArray items = new JSONArray();
+      for (SavedEntry entry : bestEntries) {
+        final String secret = entry.proxy.type instanceof TdApi.ProxyTypeMtproto
+          ? ((TdApi.ProxyTypeMtproto) entry.proxy.type).secret : "";
+        JSONObject item = new JSONObject();
+        item.put("server", entry.proxy.server);
+        item.put("port", entry.proxy.port);
+        item.put("secret", secret);
+        item.put("ping", entry.pingMs);
+        item.put("at", entry.testedAtMs);
+        items.put(item);
+      }
+      final JSONObject root = new JSONObject();
+      root.put("updated_at", bestUpdatedAt);
+      root.put("items", items);
+      Settings.instance().putString(KEY_BEST_PROXIES, root.toString());
+    } catch (Throwable t) {
+      Log.i("Unable to persist best proxies", t);
+    }
+  }
+
+  private static void ensureBestLoaded () {
+    if (bestLoaded) {
+      return;
+    }
+    bestLoaded = true;
+    try {
+      final String json = Settings.instance().getString(KEY_BEST_PROXIES, null);
+      if (StringUtils.isEmpty(json)) {
+        return;
+      }
+      final JSONObject root = new JSONObject(json);
+      bestUpdatedAt = root.optLong("updated_at", 0);
+      final JSONArray items = root.optJSONArray("items");
+      if (items == null) {
+        return;
+      }
+      for (int i = 0; i < items.length(); i++) {
+        JSONObject item = items.optJSONObject(i);
+        if (item == null) {
+          continue;
+        }
+        final String server = trimToEmpty(item.optString("server", ""));
+        final int port = item.optInt("port", 0);
+        final String secret = trimToEmpty(item.optString("secret", ""));
+        if (server.isEmpty() || port <= 0 || port > 65535 || secret.isEmpty()) {
+          continue;
+        }
+        final TdApi.Proxy proxy = new TdApi.Proxy(server, port, new TdApi.ProxyTypeMtproto(secret));
+        bestEntries.add(new SavedEntry(proxy, item.optLong("ping", Settings.PROXY_TIME_UNSET), item.optLong("at", 0)));
+      }
+    } catch (Throwable t) {
+      Log.i("Unable to restore best proxies", t);
+    }
+  }
+
+  // endregion
 }

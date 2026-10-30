@@ -48,9 +48,12 @@ import org.thunderdog.challegram.util.StringList;
 import org.thunderdog.challegram.v.CustomRecyclerView;
 import org.thunderdog.challegram.widget.RadioView;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 
 import me.vkryl.core.ArrayUtils;
 import me.vkryl.core.StringUtils;
@@ -342,6 +345,8 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
       if (info.pingCount == nextPingId) {
         checkWinners();
         adapter.updateValuedSettingByPosition(indexOfProxy(info.id));
+        // 每条测速结果都可能改变「不可用」条数，同步刷新统计计数
+        updateCleanupRow();
       }
     }));
   }
@@ -393,10 +398,14 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
 
   /** 在线代理行的 longId 命名空间：用负数，避免与已保存代理的 id（正数）冲突 */
   private static final int ONLINE_PROXY_LONG_ID_BASE = -1;
+  /** 优质代理行的 longId 命名空间：另起一段，避免与在线代理行冲突 */
+  private static final int BEST_PROXY_LONG_ID_BASE = -1000000;
 
   private boolean onlineTesting;
   private int onlineTestingDone, onlineTestingTotal;
   private @Nullable OnlineProxies.PingTask onlinePingTask;
+  /** 正在拉取的数据源（{@link OnlineProxies#SOURCE_TOP} / {@link OnlineProxies#SOURCE_ALL}），-1 表示空闲 */
+  private int onlineFetchSource = -1;
 
   /**
    * 重建整页 ListItem。这是唯一的布局来源：onCreateView 与运行期刷新都走这里，
@@ -417,6 +426,8 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
     items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
     items.add(new ListItem(ListItem.TYPE_VALUED_SETTING_COMPACT, R.id.btn_proxyFetchOnline, R.drawable.baseline_cloud_download_24, R.string.OnlineProxyFetch));
     items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
+    items.add(new ListItem(ListItem.TYPE_VALUED_SETTING_COMPACT, R.id.btn_proxyFetchAllOnline, R.drawable.baseline_file_download_24, R.string.OnlineProxyFetchAll));
+    items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
     items.add(new ListItem(ListItem.TYPE_VALUED_SETTING_COMPACT, R.id.btn_proxyTestOnline, R.drawable.baseline_sync_24, R.string.OnlineProxyTestAll));
     items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
     items.add(new ListItem(ListItem.TYPE_DESCRIPTION, R.id.btn_proxyOnlineStatus, 0, 0, buildOnlineStatusText(), 0, false));
@@ -433,8 +444,25 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
       items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
     }
 
+    // 优质代理：上次「拉取 + 全部测试」后保存的最快若干条，持久化存储，重启后仍在
+    final List<OnlineProxies.SavedEntry> best = OnlineProxies.getBestEntries();
+    if (!best.isEmpty()) {
+      items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, R.string.BestProxyTitle));
+      items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
+      for (int i = 0; i < best.size(); i++) {
+        if (i > 0) {
+          items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
+        }
+        items.add(newBestProxyItem(best.get(i), i));
+      }
+      items.add(new ListItem(ListItem.TYPE_SHADOW_BOTTOM));
+      items.add(new ListItem(ListItem.TYPE_DESCRIPTION, R.id.btn_bestProxyStatus, 0, 0, buildBestStatusText(), 0, false));
+    }
+
     items.add(new ListItem(ListItem.TYPE_HEADER, 0, 0, R.string.ProxyConnections));
     items.add(new ListItem(ListItem.TYPE_SHADOW_TOP));
+    items.add(new ListItem(ListItem.TYPE_VALUED_SETTING_COMPACT, R.id.btn_proxyCleanup, R.drawable.baseline_delete_sweep_24, R.string.ProxyCleanupInvalid));
+    items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
     items.add(new ListItem(ListItem.TYPE_VALUED_SETTING_COMPACT_WITH_RADIO, R.id.btn_noProxy, 0, R.string.ProxyNone));
     for (Settings.Proxy proxy : proxies) {
       items.add(new ListItem(ListItem.TYPE_SEPARATOR_FULL));
@@ -451,6 +479,33 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
     return new ListItem(ListItem.TYPE_VALUED_SETTING_COMPACT_WITH_RADIO, R.id.btn_onlineProxy)
       .setLongId(ONLINE_PROXY_LONG_ID_BASE - index)
       .setData(entry);
+  }
+
+  /** 优质代理区块的时间戳展示格式：MM-dd HH:mm */
+  private static final SimpleDateFormat BEST_TIME_FORMAT =
+    new SimpleDateFormat("MM-dd HH:mm", Locale.getDefault());
+
+  private ListItem newBestProxyItem (@NonNull OnlineProxies.SavedEntry entry, int index) {
+    return new ListItem(ListItem.TYPE_VALUED_SETTING_COMPACT_WITH_RADIO, R.id.btn_bestProxy)
+      .setLongId(BEST_PROXY_LONG_ID_BASE - index)
+      .setData(entry);
+  }
+
+  private static @Nullable String formatTimestamp (long timeMs) {
+    if (timeMs <= 0) {
+      return null;
+    }
+    synchronized (BEST_TIME_FORMAT) {
+      return BEST_TIME_FORMAT.format(new Date(timeMs));
+    }
+  }
+
+  private CharSequence buildBestStatusText () {
+    final int count = OnlineProxies.getBestEntries().size();
+    final String time = formatTimestamp(OnlineProxies.getBestUpdatedAt());
+    return time != null ?
+      Lang.getString(R.string.BestProxyStatus, count, time) :
+      Lang.getString(R.string.BestProxyStatusNoDate, count);
   }
 
   /** 只重建 ListItem 列表并做差量刷新：不变的单元格不重新绑定，避免闪烁与滚动位置跳动。 */
@@ -566,34 +621,47 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
 
   /** 该在线代理是否已在「常用」列表中 */
   private @Nullable Settings.Proxy findSavedProxy (@NonNull OnlineProxies.Entry entry) {
+    return findSavedProxyByConfig(entry.proxy);
+  }
+
+  /** 按代理配置（server + port + secret）在「常用」列表中查找既有条目 */
+  private @Nullable Settings.Proxy findSavedProxyByConfig (@Nullable TdApi.Proxy config) {
+    if (config == null) {
+      return null;
+    }
     for (Settings.Proxy proxy : proxies) {
-      if (OnlineProxies.isSameProxy(proxy.proxy, entry.proxy)) {
+      if (OnlineProxies.isSameProxy(proxy.proxy, config)) {
         return proxy;
       }
     }
     return null;
   }
 
-  private void fetchOnlineProxies () {
+  private void fetchOnlineProxies (int source) {
     if (OnlineProxies.isLoading()) {
       return;
     }
     if (onlineTesting) {
       cancelOnlineTesting();
     }
+    onlineFetchSource = source;
     OnlineProxies.setLoading();
     rebuildItems();
     new Thread(() -> {
-      final OnlineProxies.FetchResult result = OnlineProxies.fetchSync();
+      final OnlineProxies.FetchResult result = OnlineProxies.fetchSync(source);
       UI.post(() -> {
         if (isDestroyed() || adapter == null) {
+          onlineFetchSource = -1;
           return;
         }
         OnlineProxies.applyResult(result);
+        onlineFetchSource = -1;
         rebuildItems();
         final int state = OnlineProxies.getState();
         final CharSequence message;
         if (state == OnlineProxies.STATE_READY) {
+          // 注意：这里只在拉取层整体覆盖在线列表；「优质代理」不会被清空，
+          // 它要等本次全部测试跑完后由 saveBestFrom 决定是否整体替换。
           message = Lang.getString(R.string.OnlineProxyFetched, OnlineProxies.getEntries().size());
         } else if (state == OnlineProxies.STATE_EMPTY) {
           message = Lang.getString(R.string.OnlineProxyStatusEmpty);
@@ -618,8 +686,10 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
     onlineTesting = true;
     onlineTestingDone = 0;
     onlineTestingTotal = list.size();
+    // 条数多时（全量列表约 1000 条）适当提高并发，避免一次测试跑太久
+    final int concurrency = list.size() > 200 ? 12 : OnlineProxies.DEFAULT_CONCURRENCY;
     // startPing 会同步把所有条目置为「检查中」，随后重建即可看到状态
-    onlinePingTask = OnlineProxies.startPing(list, OnlineProxies.DEFAULT_CONCURRENCY, OnlineProxies.DEFAULT_TIMEOUT_MS, () -> {
+    onlinePingTask = OnlineProxies.startPing(list, concurrency, OnlineProxies.DEFAULT_TIMEOUT_MS, () -> {
       final OnlineProxies.PingTask task = onlinePingTask;
       if (task == null) {
         return;
@@ -629,8 +699,11 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
     }, () -> {
       onlineTesting = false;
       OnlineProxies.sortByPing(OnlineProxies.getEntries());
+      // 取本次通过且最快的前 20 条持久化；返回 0 表示本次没有连通的代理，旧数据保留
+      final int bestCount = OnlineProxies.saveBestFrom(OnlineProxies.getEntries());
       rebuildItems();
-      UI.showToast(Lang.getString(R.string.OnlineProxyStatusTested, OnlineProxies.getEntries().size()), Toast.LENGTH_SHORT);
+      UI.showToast(Lang.getString(bestCount > 0 ? R.string.OnlineProxyStatusTestedBest : R.string.OnlineProxyStatusTestedNoBest,
+        OnlineProxies.getEntries().size(), bestCount), Toast.LENGTH_SHORT);
     });
     rebuildItems();
   }
@@ -676,11 +749,172 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
     }
   }
 
+  /** 已保存代理变化后，刷新优质代理行的「当前生效」标记 */
+  private void updateBestRows () {
+    if (adapter == null || isDestroyed()) {
+      return;
+    }
+    final int start = adapter.indexOfViewById(R.id.btn_bestProxy);
+    if (start == -1) {
+      return;
+    }
+    final int count = OnlineProxies.getBestEntries().size();
+    for (int i = 0; i < count; i++) {
+      adapter.updateValuedSettingByPosition(start + i * 2);
+    }
+  }
+
+  /** 优质代理行右侧的延迟文案，与控制台其它行保持同一套格式 */
+  private CharSequence buildBestValue (@NonNull OnlineProxies.SavedEntry entry) {
+    return Lang.lowercase(Lang.getString(R.string.format_ping, Strings.buildCounter(entry.pingMs)));
+  }
+
+  /** 应用（或仅添加到常用）优质代理 */
+  private void applyBestProxy (@NonNull OnlineProxies.SavedEntry entry, boolean setAsCurrent) {
+    Settings.instance().addOrUpdateProxy(entry.proxy, null, setAsCurrent);
+    UI.showToast(Lang.getString(setAsCurrent ? R.string.OnlineProxyApplied : R.string.OnlineProxyAddedToSaved, entry.getAddress()), Toast.LENGTH_SHORT);
+    updateBestRows();
+    updateOnlineRows();
+  }
+
+  private void showBestProxyOptions (@NonNull OnlineProxies.SavedEntry entry) {
+    final boolean isSaved = findSavedProxyByConfig(entry.proxy) != null;
+    IntList ids = new IntList(5);
+    StringList strings = new StringList(5);
+    IntList colors = new IntList(5);
+    IntList icons = new IntList(5);
+
+    ids.append(R.id.btn_onlineProxyApply);
+    strings.append(R.string.OnlineProxyApply);
+    icons.append(R.drawable.baseline_check_24);
+    colors.append(OptionColor.NORMAL);
+
+    if (!isSaved) {
+      ids.append(R.id.btn_onlineProxyAddToSaved);
+      strings.append(R.string.OnlineProxyAddToSaved);
+      icons.append(R.drawable.baseline_add_24);
+      colors.append(OptionColor.NORMAL);
+    }
+
+    ids.append(R.id.btn_copyLink);
+    strings.append(R.string.CopyLink);
+    icons.append(R.drawable.baseline_link_24);
+    colors.append(OptionColor.NORMAL);
+
+    ids.append(R.id.btn_bestProxyRemove);
+    strings.append(R.string.BestProxyRemove);
+    icons.append(R.drawable.baseline_delete_24);
+    colors.append(OptionColor.RED);
+
+    showOptions(Lang.getString(R.string.ProxyMtproto, entry.getAddress()), ids.get(), strings.get(), colors.get(), icons.get(), (itemView, id) -> {
+      if (id == R.id.btn_onlineProxyApply) {
+        applyBestProxy(entry, true);
+      } else if (id == R.id.btn_onlineProxyAddToSaved) {
+        applyBestProxy(entry, false);
+      } else if (id == R.id.btn_copyLink) {
+        UI.copyText(OnlineProxies.buildProxyLink(entry.proxy), R.string.CopiedLink);
+      } else if (id == R.id.btn_bestProxyRemove) {
+        if (OnlineProxies.removeBestEntry(entry)) {
+          rebuildItems();
+        }
+      }
+      return true;
+    });
+  }
+
+  // region 一键删除无效代理
+
+  /** 当前「常用」列表里测试失败（不可连接）的条目数 */
+  private int countInvalidProxies () {
+    int count = 0;
+    for (Settings.Proxy proxy : proxies) {
+      if (proxy.proxy != null && proxy.pingMs == Settings.PROXY_TIME_EMPTY) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  /** 按钮行右侧的统计计数 */
+  private @Nullable CharSequence buildCleanupValue () {
+    final int count = countInvalidProxies();
+    return count > 0 ? Lang.getString(R.string.ProxyCleanupCount, count) : null;
+  }
+
+  private void updateCleanupRow () {
+    if (adapter == null || isDestroyed()) {
+      return;
+    }
+    final int index = adapter.indexOfViewById(R.id.btn_proxyCleanup);
+    if (index != -1) {
+      adapter.updateValuedSettingByPosition(index);
+    }
+  }
+
+  private void cleanupInvalidProxies () {
+    final List<Integer> invalidIds = new ArrayList<>();
+    for (Settings.Proxy proxy : proxies) {
+      if (proxy.proxy != null && proxy.pingMs == Settings.PROXY_TIME_EMPTY) {
+        invalidIds.add(proxy.id);
+      }
+    }
+    if (invalidIds.isEmpty()) {
+      UI.showToast(R.string.ProxyCleanupNone, Toast.LENGTH_SHORT);
+      return;
+    }
+    showOptions(Lang.getString(R.string.ProxyCleanupConfirm, invalidIds.size()),
+      new int[] {R.id.btn_removeProxy, R.id.btn_cancel},
+      new String[] {Lang.getString(R.string.ProxyRemove), Lang.getString(R.string.Cancel)},
+      new int[] {OptionColor.RED, OptionColor.NORMAL},
+      new int[] {R.drawable.baseline_delete_24, R.drawable.baseline_cancel_24}, (itemView, id) -> {
+        if (id == R.id.btn_removeProxy) {
+          cleanupInvalidProxiesImpl(invalidIds);
+        }
+        return true;
+      });
+  }
+
+  /** 逐条删除：每删一条都重新按 id 定位，避免批量删除后下标漂移 */
+  private void cleanupInvalidProxiesImpl (@NonNull List<Integer> invalidIds) {
+    int removed = 0;
+    for (int proxyId : invalidIds) {
+      if (proxyId == effectiveProxyId) {
+        // 正在使用的代理必须先停用才能删除（与单条删除的行为一致）
+        Settings.instance().disableProxy();
+      }
+      if (!Settings.instance().removeProxy(proxyId)) {
+        continue;
+      }
+      int cellIndex = indexOfProxy(proxyId);
+      if (cellIndex != -1) {
+        adapter.removeRange(cellIndex - 1, 2);
+        int proxyIndex = cellIndexToProxyIndex(cellIndex);
+        if (proxyIndex != -1) {
+          proxies.remove(proxyIndex);
+        }
+      }
+      removed++;
+    }
+    checkAutoSwitchItems();
+    updateCleanupRow();
+    updateOnlineRows();
+    updateBestRows();
+    if (removed == 0) {
+      // 一条都没删掉（例如都被 removeProxy 拒绝）
+      UI.showToast(R.string.ProxyCleanupNone, Toast.LENGTH_SHORT);
+    } else {
+      UI.showToast(Lang.getString(R.string.ProxyCleanupDone, removed), Toast.LENGTH_SHORT);
+    }
+  }
+
+  // endregion
+
   /** 应用（或仅添加到常用）在线代理，走与现有列表相同的 Settings 流程 */
   private void applyOnlineProxy (@NonNull OnlineProxies.Entry entry, boolean setAsCurrent) {
     Settings.instance().addOrUpdateProxy(entry.proxy, null, setAsCurrent);
     UI.showToast(Lang.getString(setAsCurrent ? R.string.OnlineProxyApplied : R.string.OnlineProxyAddedToSaved, entry.getAddress()), Toast.LENGTH_SHORT);
     updateOnlineRows();
+    updateBestRows();
   }
 
   private void showOnlineProxyOptions (@NonNull OnlineProxies.Entry entry) {
@@ -828,7 +1062,25 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
         } else if (itemId == R.id.btn_useProxyForCalls) {
           view.getToggler().setRadioEnabled(Settings.instance().checkProxySetting(Settings.PROXY_FLAG_USE_FOR_CALLS), isUpdate);
         } else if (itemId == R.id.btn_proxyFetchOnline) {
-          view.setData(OnlineProxies.isLoading() ? Lang.getString(R.string.OnlineProxyStatusLoading) : null);
+          view.setData(OnlineProxies.isLoading() && onlineFetchSource == OnlineProxies.SOURCE_TOP ?
+            Lang.getString(R.string.OnlineProxyLoadingShort) : null);
+        } else if (itemId == R.id.btn_proxyFetchAllOnline) {
+          view.setData(OnlineProxies.isLoading() && onlineFetchSource == OnlineProxies.SOURCE_ALL ?
+            Lang.getString(R.string.OnlineProxyLoadingShort) : null);
+        } else if (itemId == R.id.btn_proxyCleanup) {
+          view.setData(buildCleanupValue());
+        } else if (itemId == R.id.btn_bestProxy) {
+          OnlineProxies.SavedEntry bestEntry = (OnlineProxies.SavedEntry) item.getData();
+          if (bestEntry != null) {
+            view.setName(Lang.getString(R.string.ProxyMtproto, bestEntry.getAddress()));
+            view.setDataColorId(ColorId.textSecure);
+            view.setData(buildBestValue(bestEntry));
+            final Settings.Proxy saved = findSavedProxyByConfig(bestEntry.proxy);
+            final boolean isEffective = saved != null && saved.id == effectiveProxyId;
+            RadioView radioView = view.findRadioView();
+            radioView.setActive(isEffective, isUpdate);
+            radioView.setChecked(isEffective, isUpdate);
+          }
         } else if (itemId == R.id.btn_proxyTestOnline) {
           view.setName(Lang.getString(onlineTesting ? R.string.OnlineProxyTestStop : R.string.OnlineProxyTestAll));
           view.setData(onlineTesting ? Lang.getString(R.string.OnlineProxyProgress, onlineTestingDone, onlineTestingTotal) : null);
@@ -993,9 +1245,23 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
     } else if (viewId == R.id.btn_useProxyForCalls) {
       Settings.instance().setProxySetting(Settings.PROXY_FLAG_USE_FOR_CALLS, adapter.toggleView(v));
     } else if (viewId == R.id.btn_proxyFetchOnline) {
-      fetchOnlineProxies();
+      fetchOnlineProxies(OnlineProxies.SOURCE_TOP);
+    } else if (viewId == R.id.btn_proxyFetchAllOnline) {
+      fetchOnlineProxies(OnlineProxies.SOURCE_ALL);
     } else if (viewId == R.id.btn_proxyTestOnline) {
       toggleOnlineTesting();
+    } else if (viewId == R.id.btn_proxyCleanup) {
+      cleanupInvalidProxies();
+    } else if (viewId == R.id.btn_bestProxy) {
+      OnlineProxies.SavedEntry bestEntry = (OnlineProxies.SavedEntry) item.getData();
+      if (bestEntry != null) {
+        Settings.Proxy saved = findSavedProxyByConfig(bestEntry.proxy);
+        if (saved != null && saved.id == effectiveProxyId) {
+          showBestProxyOptions(bestEntry);
+        } else {
+          applyBestProxy(bestEntry, true);
+        }
+      }
     } else if (viewId == R.id.btn_onlineProxy) {
       OnlineProxies.Entry entry = (OnlineProxies.Entry) item.getData();
       if (entry != null) {
@@ -1043,6 +1309,13 @@ public class SettingsProxyController extends RecyclerViewController<Void> implem
       OnlineProxies.Entry entry = (OnlineProxies.Entry) item.getData();
       if (entry != null) {
         showOnlineProxyOptions(entry);
+      }
+      return true;
+    } else if (viewId == R.id.btn_bestProxy) {
+      ListItem item = (ListItem) v.getTag();
+      OnlineProxies.SavedEntry entry = (OnlineProxies.SavedEntry) item.getData();
+      if (entry != null) {
+        showBestProxyOptions(entry);
       }
       return true;
     }

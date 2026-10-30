@@ -1498,10 +1498,19 @@
 
   <!-- Online proxies (custom feature) -->
   <item type="id" name="btn_proxyFetchOnline" />
+  <item type="id" name="btn_proxyFetchAllOnline" />
   <item type="id" name="btn_proxyTestOnline" />
   <item type="id" name="btn_proxyOnlineStatus" />
   <item type="id" name="btn_onlineProxy" />
   <item type="id" name="btn_onlineProxyApply" />
   <item type="id" name="btn_onlineProxyAddToSaved" />
   <item type="id" name="btn_onlineProxyRemove" />
+
+  <!-- Best (persisted) proxies (custom feature) -->
+  <item type="id" name="btn_bestProxy" />
+  <item type="id" name="btn_bestProxyStatus" />
+  <item type="id" name="btn_bestProxyRemove" />
+
+  <!-- Batch cleanup of invalid saved proxies (custom feature) -->
+  <item type="id" name="btn_proxyCleanup" />
 </resources>
